@@ -34,6 +34,7 @@
 #include <vector>
 
 #include <boost/asio.hpp>
+#include <finlink/protocol.h>
 
 #include "common/common_types.h"
 #include "core/frontend/framebuffer_layout.h"
@@ -46,15 +47,6 @@ namespace Core::Streaming {
 
 class Beacon;
 
-// Current remote touch state, read by the HID module's UpdatePadCallback
-// (src/core/hle/service/hid/hid.cpp) once per pad update while a client is
-// actively streaming; see Server::GetTouchOverride().
-struct TouchOverride {
-    bool pressed;
-    u16 x;
-    u16 y;
-};
-
 class Server {
 public:
     explicit Server(Core::System& system, u16 port);
@@ -63,10 +55,17 @@ public:
     Server(const Server&) = delete;
     Server& operator=(const Server&) = delete;
 
-    // nullopt whenever no client is in an active (post-session_ready)
-    // session -- callers should fall back to local touch input in that case,
-    // not just leave the last remote position sitting there un-refreshed.
-    [[nodiscard]] std::optional<TouchOverride> GetTouchOverride() const;
+    // Current remote touch + buttons + circle pad state, read by the HID
+    // module's UpdatePadCallback (src/core/hle/service/hid/hid.cpp) once
+    // per pad update while a client is actively streaming. nullopt whenever
+    // no client is in an active (post-session_ready) session -- callers
+    // should fall back to local input in that case, not just leave the last
+    // remote state sitting there un-refreshed. finlink_extended_input
+    // itself (finlink/protocol.h) is the wire type this is parsed from
+    // (input_encoding "n3ds_touch_and_buttons", stream_constants.h) --
+    // reused directly rather than wrapped in an Azahar-local struct, since
+    // nothing here transforms it.
+    [[nodiscard]] std::optional<finlink_extended_input> GetInputOverride() const;
 
 private:
     // Arms the next async_accept(); re-arms itself from within the
@@ -88,7 +87,7 @@ private:
     // RendererXXX::RenderScreenshot() -- must stay fast (copy out, re-arm),
     // per this project's own renderer_opengl.cpp::RenderScreenshot()
     // implementation, which calls this callback directly from GL code.
-    void OnScreenshotComplete(bool result);
+    void OnScreenshotComplete(bool invert_y);
 
     Core::System& system;
     const u16 port;
@@ -120,12 +119,24 @@ private:
 
     std::mutex frame_mutex;
     std::vector<u8> latest_frame_bgra8;
+    // Whether latest_frame_bgra8 is bottom-up and needs flipping before use
+    // -- the invert_y RequestScreenshot's callback reported for this
+    // specific capture (see OnScreenshotComplete's own comment,
+    // bottom_screen_stream.cpp), not a fixed backend-wide constant, so this
+    // travels alongside the buffer it actually describes rather than being
+    // read fresh (and matching some *other* frame) at send time.
+    bool latest_frame_invert_y = false;
     u64 frame_id = 0;
 
-    std::atomic_bool touch_active{false};
-    std::atomic_bool touch_pressed{false};
-    std::atomic<u16> touch_x{0};
-    std::atomic<u16> touch_y{0};
+    std::atomic_bool input_active{false};
+    // Guards latest_input, not folded into frame_mutex above: updated from
+    // RunSession() on every received client frame (input_dirty in spirit,
+    // though there's no separate dirty flag here -- unlike outgoing video
+    // frames, there's no "only if changed" send-side cost to avoid, this is
+    // just read fresh by GetInputOverride() every pad update instead), a
+    // much higher rate than frame_mutex's per-video-frame cadence.
+    mutable std::mutex input_mutex;
+    finlink_extended_input latest_input{};
 
     std::unique_ptr<Beacon> beacon;
 };

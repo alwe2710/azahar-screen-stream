@@ -243,6 +243,44 @@ void Module::UpdatePadCallback(std::uintptr_t user_data, s64 cycles_late) {
 
         system.Movie().HandlePadAndCircleStatus(state, circle_pad_x, circle_pad_y);
 
+        // A remote finlink client streaming the bottom screen with full
+        // remote input (input_encoding "n3ds_touch_and_buttons", see
+        // core/streaming/bottom_screen_stream.h) overrides buttons and the
+        // circle pad too, not just touch -- fetched once here and reused
+        // for the touch override further down, rather than calling
+        // GetInputOverride() a second time there, so both halves of one
+        // update always come from the same snapshot instead of two
+        // (rare but possible) different ones a session thread could publish
+        // between the two calls. nullopt whenever no client is in such a
+        // session, in which case local input is used exactly as before --
+        // applied after Movie().HandlePadAndCircleStatus() above so movie
+        // recording still captures local input.
+        const auto* bottom_screen_stream = system.BottomScreenStream();
+        const auto input_override =
+            bottom_screen_stream ? bottom_screen_stream->GetInputOverride() : std::nullopt;
+        if (input_override) {
+            // 3DS circle pad range is +-MAX_CIRCLEPAD_POS, not the wire
+            // value's full s16 range -- rescale proportionally.
+            circle_pad_x = static_cast<s16>(input_override->left_x * MAX_CIRCLEPAD_POS / 32767);
+            circle_pad_y = static_cast<s16>(input_override->left_y * MAX_CIRCLEPAD_POS / 32767);
+
+            state.a.Assign((input_override->buttons & FINLINK_BUTTON_A) != 0);
+            state.b.Assign((input_override->buttons & FINLINK_BUTTON_B) != 0);
+            state.x.Assign((input_override->buttons & FINLINK_BUTTON_X) != 0);
+            state.y.Assign((input_override->buttons & FINLINK_BUTTON_Y) != 0);
+            state.l.Assign((input_override->buttons & FINLINK_BUTTON_L) != 0);
+            state.r.Assign((input_override->buttons & FINLINK_BUTTON_R) != 0);
+            state.start.Assign((input_override->buttons & FINLINK_BUTTON_START) != 0);
+            state.select.Assign((input_override->buttons & FINLINK_BUTTON_SELECT) != 0);
+            state.up.Assign((input_override->buttons & FINLINK_BUTTON_UP) != 0);
+            state.down.Assign((input_override->buttons & FINLINK_BUTTON_DOWN) != 0);
+            state.left.Assign((input_override->buttons & FINLINK_BUTTON_LEFT) != 0);
+            state.right.Assign((input_override->buttons & FINLINK_BUTTON_RIGHT) != 0);
+            // finlink_button_bit has no 3DS equivalent for ZL/ZR/Home (those
+            // exist for other consoles, e.g. WIIU_GAMEPAD) -- simply never
+            // looked at here.
+        }
+
         const DirectionState direction = GetStickDirectionState(circle_pad_x, circle_pad_y);
         state.circle_up.Assign(direction.up);
         state.circle_down.Assign(direction.down);
@@ -282,21 +320,17 @@ void Module::UpdatePadCallback(std::uintptr_t user_data, s64 cycles_late) {
         // Get the current touch entry
         TouchDataEntry& touch_entry = mem->touch.entries[mem->touch.index];
 
-        // A remote finlink client streaming the bottom screen (see
-        // core/streaming/bottom_screen_stream.h) wholesale overrides touch
-        // only -- unlike ArticBaseController above, which replaces the
-        // entire pad+circle-pad+touch state, a streaming client never
-        // touches buttons or the circle pad, so those keep coming from local
-        // input even while a stream is active. nullopt whenever no client is
-        // in an active session, in which case local input is used exactly as
-        // before.
-        const auto* bottom_screen_stream = system.BottomScreenStream();
-        const auto touch_override =
-            bottom_screen_stream ? bottom_screen_stream->GetTouchOverride() : std::nullopt;
-        if (touch_override) {
-            touch_entry.x = touch_override->x;
-            touch_entry.y = touch_override->y;
-            touch_entry.valid.Assign(touch_override->pressed ? 1 : 0);
+        // Same remote finlink client override as the buttons/circle-pad
+        // block above (input_override, fetched once there and reused here)
+        // -- unlike ArticBaseController above, which replaces the entire
+        // pad+circle-pad+touch state from one source, this is still
+        // conceptually the same "wholesale override while a stream is
+        // active, fall back to local input otherwise" shape, just now
+        // covering all of it instead of touch alone.
+        if (input_override) {
+            touch_entry.x = input_override->touch_x;
+            touch_entry.y = input_override->touch_y;
+            touch_entry.valid.Assign(input_override->pressed ? 1 : 0);
         } else {
             bool pressed = false;
             float x, y;

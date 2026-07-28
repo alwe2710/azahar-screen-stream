@@ -17,7 +17,7 @@ namespace Core::Streaming {
 constexpr int STREAM_PROTOCOL_VERSION = 2;
 
 constexpr char STREAM_TYPE[] = "N3DS_BOTTOM_SCREEN";
-constexpr char INPUT_ENCODING[] = "n3ds_touch";
+constexpr char INPUT_ENCODING[] = "n3ds_touch_and_buttons";
 constexpr char EMULATOR_IDENTIFIER[] = "Azahar";
 
 // UDP broadcast port and beacon interval, shared across the whole finlink
