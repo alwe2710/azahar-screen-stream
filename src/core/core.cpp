@@ -593,12 +593,33 @@ System::ResultStatus System::Init(Frontend::EmuWindow& emu_window,
     }
 
     if (Settings::values.enable_bottom_screen_streaming.GetValue()) {
-        try {
-            bottom_screen_stream = std::make_unique<Streaming::Server>(
-                *this, Settings::values.bottom_screen_streaming_port.GetValue());
-        } catch (const std::exception& e) {
-            LOG_ERROR(Core, "Failed to start bottom screen stream server: {}", e.what());
-        }
+        // Deliberately not constructed synchronously right here:
+        // Streaming::Server's constructor binds a TCP listen socket, spawns
+        // its own accept-loop thread, and (via Beacon) spawns a UDP
+        // discovery-broadcast thread plus a real network syscall
+        // (ProbeLocalHost()) to find the host's own LAN address -- real, if
+        // normally fast, wall-clock-bound work. Doing all of that inline
+        // here measurably delayed the rest of Init() and everything
+        // scheduled after it, including Kernel::SetupMainThread's own
+        // LLE-module boot-race sleep (hle/kernel/thread.cpp) -- turning an
+        // already marginal race into a consistent NoExecuteFault on some
+        // titles. Scheduling it as a CoreTiming event instead runs it on
+        // this same thread, ~1s later, after boot has already stabilized,
+        // with none of that risk; HID's touch-override hook
+        // (hle/service/hid/hid.cpp) already treats a null/not-yet-active
+        // stream identically to "no client connected yet", so a stream
+        // that isn't listening for the first second of boot is invisible
+        // to the game either way.
+        auto* start_event =
+            CoreTiming().RegisterEvent("BottomScreenStreamStart", [this](std::uintptr_t, int) {
+                try {
+                    bottom_screen_stream = std::make_unique<Streaming::Server>(
+                        *this, Settings::values.bottom_screen_streaming_port.GetValue());
+                } catch (const std::exception& e) {
+                    LOG_ERROR(Core, "Failed to start bottom screen stream server: {}", e.what());
+                }
+            });
+        CoreTiming().ScheduleEvent(msToCycles(1000), start_event);
     }
 
     SetInfoLEDColor({});
