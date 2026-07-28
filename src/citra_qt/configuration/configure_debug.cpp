@@ -93,6 +93,8 @@ ConfigureDebug::ConfigureDebug(bool is_powered_on_, QWidget* parent)
     ui->toggle_dump_command_buffers->setEnabled(!is_powered_on);
     ui->enable_rpc_server->setEnabled(!is_powered_on);
     ui->toggle_unique_data_console_type->setEnabled(!is_powered_on);
+    ui->toggle_bottom_screen_streaming->setEnabled(!is_powered_on);
+    ui->bottom_screen_streaming_port_spinbox->setEnabled(!is_powered_on);
 
     // Set a minimum width for the label to prevent the slider from changing size.
     // This scales across DPIs. (This value should be enough for "xxx%")
@@ -135,6 +137,10 @@ void ConfigureDebug::SetConfiguration() {
 #ifndef ENABLE_SCRIPTING
     ui->enable_rpc_server->setVisible(false);
 #endif // !ENABLE_SCRIPTING
+    ui->toggle_bottom_screen_streaming->setChecked(
+        Settings::values.enable_bottom_screen_streaming.GetValue());
+    ui->bottom_screen_streaming_port_spinbox->setValue(
+        Settings::values.bottom_screen_streaming_port.GetValue());
     ui->toggle_unique_data_console_type->setChecked(
         Settings::values.toggle_unique_data_console_type.GetValue());
     ui->break_on_unmapped_memory_access->setChecked(
@@ -170,6 +176,10 @@ void ConfigureDebug::SetConfiguration() {
 void ConfigureDebug::ApplyConfiguration() {
     Settings::values.use_gdbstub = ui->toggle_gdbstub->isChecked();
     Settings::values.gdbstub_port = static_cast<u16>(ui->gdbport_spinbox->value());
+    Settings::values.enable_bottom_screen_streaming =
+        ui->toggle_bottom_screen_streaming->isChecked();
+    Settings::values.bottom_screen_streaming_port =
+        static_cast<u16>(ui->bottom_screen_streaming_port_spinbox->value());
     UISettings::values.show_console = ui->toggle_console->isChecked();
     Settings::values.log_filter = ui->log_filter_edit->text().toStdString();
     Settings::values.log_regex_filter = ui->log_regex_filter_edit->text().toStdString();
