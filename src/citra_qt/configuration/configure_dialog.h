@@ -47,6 +47,7 @@ public:
 
 private slots:
     void OnLanguageChanged(const QString& locale);
+    void OnFinlinkStreamingToggled(bool enabled);
 
 signals:
     void LanguageChanged(const QString& locale);
@@ -56,11 +57,22 @@ private:
     void RetranslateUI();
     void UpdateVisibleTabs();
     void PopulateSelectionList();
+    // Suffixes `base` with a "blocked by finlink" note when `tab` is
+    // layout_tab or input_tab and streaming is currently enabled -- see
+    // OnFinlinkStreamingToggled().
+    QString TabTitle(QWidget* tab, const QString& base) const;
 
     std::unique_ptr<Ui::ConfigureDialog> ui;
     HotkeyRegistry& registry;
     Core::System& system;
     bool is_powered_on;
+    // Screen layout and input/touch settings don't do anything meaningful
+    // while a finlink bottom-screen streaming client is connected (see
+    // ConfigureLayout::SetFinlinkBlocked / ConfigureInput::SetFinlinkBlocked
+    // for why), so their tabs get disabled and labeled for as long as this
+    // is true. Initialized from Settings on construction, kept live via
+    // ConfigureDebug::BottomScreenStreamingToggled while the dialog is open.
+    bool finlink_streaming_blocked = false;
 
     std::unique_ptr<ConfigureGeneral> general_tab;
     std::unique_ptr<ConfigureSystem> system_tab;

@@ -722,3 +722,7 @@ void ConfigureInput::WarnProposedProfileNameIsDuplicate() {
     QMessageBox::warning(this, tr("Duplicate profile name"),
                          tr("Profile name already exists. Please choose a different name."));
 }
+
+void ConfigureInput::SetFinlinkBlocked(bool blocked) {
+    setEnabled(!blocked);
+}
