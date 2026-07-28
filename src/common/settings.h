@@ -658,6 +658,13 @@ struct Values {
     Setting<u16> gdbstub_port{24689, Keys::gdbstub_port};
     Setting<bool> instant_debug_log{false, Keys::instant_debug_log};
     Setting<bool> enable_rpc_server{false, Keys::enable_rpc_server};
+    // finlink N3DS_BOTTOM_SCREEN streaming (src/core/streaming/): lets a
+    // remote finlink client (see the sibling dolphin-gba-stream project's
+    // protocol) view the bottom screen and inject touch input over the
+    // network. Off by default, same reasoning as use_gdbstub/enable_rpc_server
+    // -- it's a listening socket, opt-in only.
+    Setting<bool> enable_bottom_screen_streaming{false, Keys::enable_bottom_screen_streaming};
+    Setting<u16> bottom_screen_streaming_port{6810, Keys::bottom_screen_streaming_port};
     Setting<bool> toggle_unique_data_console_type{false, Keys::toggle_unique_data_console_type};
     Setting<bool> break_on_unmapped_memory_access{false, Keys::break_on_unmapped_memory_access};
 

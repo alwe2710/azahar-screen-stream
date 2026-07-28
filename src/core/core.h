@@ -39,6 +39,10 @@ namespace Core::RPC {
 class Server;
 }
 
+namespace Core::Streaming {
+class Server;
+}
+
 namespace Service {
 namespace SM {
 class ServiceManager;
@@ -320,6 +324,14 @@ public:
         return *app_loader;
     }
 
+    /// The N3DS_BOTTOM_SCREEN finlink streaming server (src/core/streaming/),
+    /// non-null only while Settings::values.enable_bottom_screen_streaming
+    /// is set and construction succeeded. Used by the HID module to check
+    /// for a remote touch override -- see Streaming::Server::GetTouchOverride().
+    [[nodiscard]] Streaming::Server* BottomScreenStream() const {
+        return bottom_screen_stream.get();
+    }
+
     /// Frontend Applets
 
     void RegisterMiiSelector(std::shared_ptr<Frontend::MiiSelector> mii_selector);
@@ -487,6 +499,9 @@ private:
     /// RPC Server for scripting support
     std::unique_ptr<RPC::Server> rpc_server;
 #endif
+
+    /// N3DS_BOTTOM_SCREEN finlink streaming server, see BottomScreenStream().
+    std::unique_ptr<Streaming::Server> bottom_screen_stream;
 
     std::unique_ptr<Service::FS::ArchiveManager> archive_manager;
 

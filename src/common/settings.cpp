@@ -169,6 +169,10 @@ void LogSettings() {
     log_setting("Debugging_UseGdbstub", values.use_gdbstub.GetValue());
     log_setting("Debugging_GdbstubPort", values.gdbstub_port.GetValue());
     log_setting("Debugging_InstantDebugLog", values.instant_debug_log.GetValue());
+    log_setting("Debugging_EnableBottomScreenStreaming",
+                values.enable_bottom_screen_streaming.GetValue());
+    log_setting("Debugging_BottomScreenStreamingPort",
+                values.bottom_screen_streaming_port.GetValue());
     log_setting("Debugging_ToggleUniqueDataConsoleType",
                 values.toggle_unique_data_console_type.GetValue());
     log_setting("Debugging_BreakOnUnmappedMemoryAccess",

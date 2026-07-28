@@ -490,6 +490,14 @@ add_library(citra_core STATIC EXCLUDE_FROM_ALL
     savestate.cpp
     savestate.h
     savestate_data.h
+    streaming/beacon.cpp
+    streaming/beacon.h
+    streaming/bottom_screen_stream.cpp
+    streaming/bottom_screen_stream.h
+    streaming/handshake_messages.cpp
+    streaming/handshake_messages.h
+    streaming/stream_constants.h
+    streaming/websocket_transport.h
     system_titles.cpp
     system_titles.h
     tracer/citrace.h
@@ -506,6 +514,9 @@ create_target_directory_groups(citra_core)
 target_link_libraries(citra_core PUBLIC citra_common PRIVATE audio_core network video_core)
 target_link_libraries(citra_core PRIVATE Boost::boost Boost::serialization Boost::iostreams httplib)
 target_link_libraries(citra_core PUBLIC dds-ktx PRIVATE cryptopp fmt lodepng open_source_archives)
+# streaming/: N3DS_BOTTOM_SCREEN finlink server (WebSocket handshake/framing
+# via finlink_core, JSON handshake messages via json-headers).
+target_link_libraries(citra_core PRIVATE finlink_core json-headers)
 
 if (ENABLE_WEB_SERVICE)
     target_link_libraries(citra_core PRIVATE web_service)

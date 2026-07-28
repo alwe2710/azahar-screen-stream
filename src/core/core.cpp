@@ -50,6 +50,7 @@
 #include "core/movie.h"
 #ifdef ENABLE_SCRIPTING
 #include "core/rpc/server.h"
+#include "core/streaming/bottom_screen_stream.h"
 #endif
 #include "network/network.h"
 #include "video_core/custom_textures/custom_tex_manager.h"
@@ -591,6 +592,15 @@ System::ResultStatus System::Init(Frontend::EmuWindow& emu_window,
         plg_ldr->SetAllowGameChangeState(Settings::values.allow_plugin_loader.GetValue());
     }
 
+    if (Settings::values.enable_bottom_screen_streaming.GetValue()) {
+        try {
+            bottom_screen_stream = std::make_unique<Streaming::Server>(
+                *this, Settings::values.bottom_screen_streaming_port.GetValue());
+        } catch (const std::exception& e) {
+            LOG_ERROR(Core, "Failed to start bottom screen stream server: {}", e.what());
+        }
+    }
+
     SetInfoLEDColor({});
 
     LOG_DEBUG(Core, "Initialized OK");
@@ -692,6 +702,11 @@ void System::Shutdown(bool is_deserializing) {
 
     // Shutdown emulation session
     is_powered_on = false;
+
+    // Must be destroyed before gpu.reset() below: its capture pipeline holds
+    // a live reference to system.GPU().Renderer() and can still be mid-
+    // request-screenshot right up until its own destructor stops it.
+    bottom_screen_stream.reset();
 
     gpu.reset();
     if (!is_deserializing) {

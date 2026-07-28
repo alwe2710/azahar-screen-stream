@@ -23,6 +23,7 @@
 #include "core/hle/service/ir/ir_rst.h"
 #include "core/hle/service/ir/ir_user.h"
 #include "core/hle/service/service.h"
+#include "core/streaming/bottom_screen_stream.h"
 #include "core/movie.h"
 
 SERVICE_CONSTRUCT_IMPL(Service::HID::Module)
@@ -280,18 +281,36 @@ void Module::UpdatePadCallback(std::uintptr_t user_data, s64 cycles_late) {
 
         // Get the current touch entry
         TouchDataEntry& touch_entry = mem->touch.entries[mem->touch.index];
-        bool pressed = false;
-        float x, y;
-        std::tie(x, y, pressed) = touch_device->GetStatus();
-        if (!pressed && touch_btn_device) {
-            std::tie(x, y, pressed) = touch_btn_device->GetStatus();
+
+        // A remote finlink client streaming the bottom screen (see
+        // core/streaming/bottom_screen_stream.h) wholesale overrides touch
+        // only -- unlike ArticBaseController above, which replaces the
+        // entire pad+circle-pad+touch state, a streaming client never
+        // touches buttons or the circle pad, so those keep coming from local
+        // input even while a stream is active. nullopt whenever no client is
+        // in an active session, in which case local input is used exactly as
+        // before.
+        const auto* bottom_screen_stream = system.BottomScreenStream();
+        const auto touch_override =
+            bottom_screen_stream ? bottom_screen_stream->GetTouchOverride() : std::nullopt;
+        if (touch_override) {
+            touch_entry.x = touch_override->x;
+            touch_entry.y = touch_override->y;
+            touch_entry.valid.Assign(touch_override->pressed ? 1 : 0);
+        } else {
+            bool pressed = false;
+            float x, y;
+            std::tie(x, y, pressed) = touch_device->GetStatus();
+            if (!pressed && touch_btn_device) {
+                std::tie(x, y, pressed) = touch_btn_device->GetStatus();
+            }
+            if (!pressed && controller_touch_device) {
+                std::tie(x, y, pressed) = controller_touch_device->GetStatus();
+            }
+            touch_entry.x = static_cast<u16>(x * Core::kScreenBottomWidth);
+            touch_entry.y = static_cast<u16>(y * Core::kScreenBottomHeight);
+            touch_entry.valid.Assign(pressed ? 1 : 0);
         }
-        if (!pressed && controller_touch_device) {
-            std::tie(x, y, pressed) = controller_touch_device->GetStatus();
-        }
-        touch_entry.x = static_cast<u16>(x * Core::kScreenBottomWidth);
-        touch_entry.y = static_cast<u16>(y * Core::kScreenBottomHeight);
-        touch_entry.valid.Assign(pressed ? 1 : 0);
 
         system.Movie().HandleTouchStatus(touch_entry);
     }
