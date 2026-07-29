@@ -221,7 +221,7 @@ QString ConfigureDialog::TabTitle(QWidget* tab, const QString& base) const {
     // whole-tab treatment, since none of it is reachable from within itself
     // the way turning streaming off is from within the Layout tab.
     if (finlink_streaming_blocked && tab == input_tab.get()) {
-        return base + tr(" (durch finlink blockiert)");
+        return base + tr(" (blocked by finlink)");
     }
     return base;
 }
