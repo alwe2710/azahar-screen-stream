@@ -328,8 +328,15 @@ void Module::UpdatePadCallback(std::uintptr_t user_data, s64 cycles_late) {
         // active, fall back to local input otherwise" shape, just now
         // covering all of it instead of touch alone.
         if (input_override) {
-            touch_entry.x = input_override->touch_x;
-            touch_entry.y = input_override->touch_y;
+            // touch_x/touch_y are wire u16 (0..65535), unlike the local
+            // path below which is inherently bounded (x/y there are always
+            // 0..1 before being scaled by kScreenBottomWidth/Height) --
+            // clamp explicitly so an out-of-range value from the network
+            // can't report a touch position outside the actual screen.
+            touch_entry.x = static_cast<u16>(
+                std::min<u32>(input_override->touch_x, Core::kScreenBottomWidth - 1));
+            touch_entry.y = static_cast<u16>(
+                std::min<u32>(input_override->touch_y, Core::kScreenBottomHeight - 1));
             touch_entry.valid.Assign(input_override->pressed ? 1 : 0);
         } else {
             bool pressed = false;
