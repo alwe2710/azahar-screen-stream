@@ -220,6 +220,14 @@ void Server::ServeConnection(std::shared_ptr<boost::asio::ip::tcp::socket> socke
 
     input_active = false;
     active = false;
+    // Drop any mic audio this client sent but nobody drained yet -- left
+    // sitting here, it would otherwise get fed to FinlinkInput::Read() as
+    // if it were fresh once a later session (or a belated poll from this
+    // one) reads it, mislabeling stale audio as current.
+    {
+        std::lock_guard lock(mic_mutex);
+        pending_mic_audio.clear();
+    }
 }
 
 void Server::RunSession(boost::asio::ip::tcp::socket& socket) {
