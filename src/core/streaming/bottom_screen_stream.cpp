@@ -322,6 +322,15 @@ void Server::RunSession(boost::asio::ip::tcp::socket& socket) {
                                                        parsed->payload.size(),
                                                        &audio) == FINLINK_OK) {
                         std::lock_guard lock(mic_mutex);
+                        // PollMicAudio()/FinlinkInput::Read() only ever see
+                        // raw sample bytes, not a rate -- they trust the
+                        // client to always send at whatever rate the last
+                        // MIC_ENABLE requested. Reject anything else here
+                        // instead, rather than silently mixing differently-
+                        // rated audio into one buffer that gets played back
+                        // as if it were all mic_wanted_sample_rate.
+                        if (audio.sample_rate != mic_wanted_sample_rate)
+                            continue;
                         // ~2s cap at typical mic rates -- if FinlinkInput::
                         // Read() ever falls behind that far, drop the
                         // backlog rather than grow it unboundedly (same
