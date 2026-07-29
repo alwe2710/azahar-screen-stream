@@ -5,6 +5,7 @@
 #include "core/streaming/bottom_screen_stream.h"
 
 #include <chrono>
+#include <utility>
 
 #include <finlink/deflate.h>
 #include <finlink/protocol.h>
@@ -143,6 +144,17 @@ std::optional<finlink_extended_input> Server::GetInputOverride() const {
     return latest_input;
 }
 
+void Server::SetMicWanted(bool wanted, u32 sample_rate) {
+    std::lock_guard lock(mic_mutex);
+    mic_wanted = wanted;
+    mic_wanted_sample_rate = sample_rate;
+}
+
+std::vector<u8> Server::PollMicAudio() {
+    std::lock_guard lock(mic_mutex);
+    return std::exchange(pending_mic_audio, std::vector<u8>{});
+}
+
 void Server::DoAccept() {
     auto socket = std::make_shared<boost::asio::ip::tcp::socket>(io_context);
     acceptor.async_accept(*socket, [this, socket](const boost::system::error_code& ec) {
@@ -214,6 +226,14 @@ void Server::RunSession(boost::asio::ip::tcp::socket& socket) {
     input_active = true;
     frame_id = 0;
     u64 last_sent_frame_id = 0;
+    // Edge-detection state for the mic-enable signal -- RunSession-local
+    // (not a member) since it only means anything for this one session,
+    // same reasoning as last_sent_frame_id above. Starts at "not wanted" so
+    // a session that begins with mic_wanted already true (a game started
+    // sampling before this client connected) still sends an initial
+    // enable=1 on its first loop iteration.
+    bool last_sent_mic_wanted = false;
+    u32 last_sent_mic_sample_rate = 0;
     ArmCapture();
 
     std::vector<u8> recv_buffer;
@@ -237,6 +257,27 @@ void Server::RunSession(boost::asio::ip::tcp::socket& socket) {
             last_sent_frame_id = current_id;
         }
 
+        {
+            bool wanted;
+            u32 sample_rate;
+            {
+                std::lock_guard lock(mic_mutex);
+                wanted = mic_wanted;
+                sample_rate = mic_wanted_sample_rate;
+            }
+            if (wanted != last_sent_mic_wanted ||
+                (wanted && sample_rate != last_sent_mic_sample_rate)) {
+                const finlink_mic_enable enable{wanted ? 1 : 0, sample_rate};
+                u8 payload[FINLINK_MIC_ENABLE_FRAME_SIZE];
+                finlink_build_mic_enable_frame(&enable, payload);
+                std::vector<u8> message(payload, payload + FINLINK_MIC_ENABLE_FRAME_SIZE);
+                if (!SendWebSocketBinaryFrame(socket, message, stop))
+                    return;
+                last_sent_mic_wanted = wanted;
+                last_sent_mic_sample_rate = sample_rate;
+            }
+        }
+
         boost::system::error_code ec;
         const size_t received = socket.read_some(boost::asio::buffer(read_buf), ec);
         if (ec && ec != boost::asio::error::would_block)
@@ -255,12 +296,36 @@ void Server::RunSession(boost::asio::ip::tcp::socket& socket) {
                     return;
                 if (parsed->opcode != FINLINK_WS_OPCODE_BINARY)
                     continue;
-                finlink_extended_input input{};
-                if (finlink_parse_extended_input_frame(parsed->payload.data(),
-                                                        parsed->payload.size(),
-                                                        &input) == FINLINK_OK) {
-                    std::lock_guard lock(input_mutex);
-                    latest_input = input;
+                finlink_msg_type type;
+                if (finlink_peek_type(parsed->payload.data(), parsed->payload.size(), &type) !=
+                    FINLINK_OK)
+                    continue;
+                if (type == FINLINK_MSG_INPUT) {
+                    finlink_extended_input input{};
+                    if (finlink_parse_extended_input_frame(parsed->payload.data(),
+                                                            parsed->payload.size(),
+                                                            &input) == FINLINK_OK) {
+                        std::lock_guard lock(input_mutex);
+                        latest_input = input;
+                    }
+                } else if (type == FINLINK_MSG_MIC_AUDIO) {
+                    finlink_audio_frame audio;
+                    if (finlink_parse_mic_audio_frame(parsed->payload.data(),
+                                                       parsed->payload.size(),
+                                                       &audio) == FINLINK_OK) {
+                        std::lock_guard lock(mic_mutex);
+                        // ~2s cap at typical mic rates -- if FinlinkInput::
+                        // Read() ever falls behind that far, drop the
+                        // backlog rather than grow it unboundedly (same
+                        // tradeoff WiiuGamepadStream::SubmitGamepadAudio()
+                        // makes for the reverse direction in Cemu).
+                        constexpr size_t kMaxPendingBytes = 48000 * sizeof(s16) * 2;
+                        const size_t byte_len = audio.sample_count * sizeof(s16);
+                        if (pending_mic_audio.size() + byte_len > kMaxPendingBytes)
+                            pending_mic_audio.clear();
+                        pending_mic_audio.insert(pending_mic_audio.end(), audio.samples,
+                                                  audio.samples + byte_len);
+                    }
                 }
             }
         }

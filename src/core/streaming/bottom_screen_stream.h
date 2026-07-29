@@ -67,6 +67,29 @@ public:
     // nothing here transforms it.
     [[nodiscard]] std::optional<finlink_extended_input> GetInputOverride() const;
 
+    // Mic input forwarding -- lets the console's microphone (Service::MIC,
+    // src/core/hle/service/mic/mic_u.cpp) be sourced from the connected
+    // client's own real microphone instead of a host device. Read by
+    // AudioCore::FinlinkInput (audio_core/finlink_input.h), the Input
+    // backend a user selects in Settings the same way they'd pick Cubeb or
+    // OpenAL.
+    //
+    // SetMicWanted mirrors real mic hardware: the physical mic is only
+    // actually active while a game has it powered on and is sampling, not
+    // continuously just because a stream is connected -- called from
+    // FinlinkInput::StartSampling()/StopSampling()/AdjustSampleRate(),
+    // which causes RunSession to send a FINLINK_MSG_MIC_ENABLE to the
+    // client on the next loop iteration if the wanted state actually
+    // changed (edge-triggered, not resent every iteration).
+    void SetMicWanted(bool wanted, u32 sample_rate);
+
+    // Drains and returns whatever mic audio the client has sent since the
+    // last call (never blocks) -- FinlinkInput::Read() polls this once per
+    // AX tick. Empty if nothing new has arrived. Raw s16le bytes, mono
+    // (matches AudioCore::Samples' own "raw bytes, host-native s16 for a
+    // 16-bit input" convention, see CubebInput::Read()).
+    [[nodiscard]] std::vector<u8> PollMicAudio();
+
 private:
     // Arms the next async_accept(); re-arms itself from within the
     // completion handler, so the whole accept loop lives on io_thread
@@ -137,6 +160,15 @@ private:
     // much higher rate than frame_mutex's per-video-frame cadence.
     mutable std::mutex input_mutex;
     finlink_extended_input latest_input{};
+
+    // Guards all mic-related state below -- both directions (the console's
+    // want-state going out, the client's captured audio coming in) share
+    // one mutex since neither is hot enough (mic audio is a handful of KB/s
+    // at most) to need splitting like frame_mutex/input_mutex are.
+    std::mutex mic_mutex;
+    bool mic_wanted = false;
+    u32 mic_wanted_sample_rate = 0;
+    std::vector<u8> pending_mic_audio; // raw s16le bytes, mono, FIFO
 
     std::unique_ptr<Beacon> beacon;
 };
