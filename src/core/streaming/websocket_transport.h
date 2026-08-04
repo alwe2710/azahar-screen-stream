@@ -109,13 +109,26 @@ inline bool IsWebSocketUpgradeRequest(const HttpRequest& request) {
 }
 
 // Sends `size` bytes on a non-blocking socket, retrying on would_block.
-// Bounded to a few seconds total so a stalled peer can't block this thread
-// forever; `stop_flag` is checked on every retry.
+// Bounded so a stalled peer can't block this thread forever; `stop_flag` is
+// checked on every retry. 3 seconds turned out too tight in practice: a
+// routine Wi-Fi hiccup (brief congestion, a roam between APs) can leave a
+// send still buffered past that point even though the peer is still very
+// much alive, and hitting the deadline kills the whole session (the client
+// has to fully reconnect) rather than just this one frame arriving late --
+// 10 seconds absorbs that without meaningfully changing behavior for an
+// actually-dead peer, which was never going to un-stall in the next 7
+// seconds either. finlink_core now has this as a named constant,
+// FINLINK_WS_SEND_TIMEOUT_MS (core/include/finlink/websocket.h) -- not
+// referenced directly here yet because externals/finlink tracks finlink's
+// main branch (per .gitmodules), which doesn't have that commit yet (it
+// landed on finlink's transcoding branch, still unmerged as of this fix).
+// Switch this literal to the constant once externals/finlink is updated
+// past that point.
 inline bool SendAllBytes(boost::asio::ip::tcp::socket& socket, const void* data, size_t size,
                           const std::atomic_bool& stop_flag) {
     const auto* bytes = static_cast<const u8*>(data);
     size_t sent_total = 0;
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while (sent_total < size) {
         if (stop_flag || std::chrono::steady_clock::now() > deadline)
             return false;
