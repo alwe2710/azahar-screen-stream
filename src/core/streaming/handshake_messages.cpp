@@ -67,6 +67,9 @@ std::optional<HandshakeAck> ParseHelloAck(const std::vector<u8>& payload) {
     HandshakeAck ack;
     ack.protocol_version = version_it->get<int>();
     ack.requested_slot = slot_it->get<int>();
+    const auto video_mode_it = obj.find("video_mode");
+    if (video_mode_it != obj.end() && video_mode_it->is_string())
+        ack.video_mode = video_mode_it->get<std::string>();
     return ack;
 }
 
@@ -83,6 +86,16 @@ std::string BuildSessionReadyMessage() {
     obj["video"] = {{"width", STREAM_WIDTH}, {"height", STREAM_HEIGHT}, {"fps", STREAM_FPS}};
     // No "audio", no "redirect" -- audio doesn't exist for this stream type,
     // and redirect is only ever used by multi-slot stream types.
+    //
+    // video_mode is always "legacy" regardless of what the client asked for
+    // in hello_ack (see HandshakeAck::video_mode's own comment) -- this
+    // stream type has no TILES/H264/H265 encoder at all, only ever sends a
+    // full raw RGB565 frame (SendVideoFrame's hardcoded format=0, see
+    // bottom_screen_stream.cpp). Reporting the honest fallback here, per
+    // finlink's docs/protocol.md "Video-mode fallback", is what lets a
+    // client that requested something else show a fallback prompt instead
+    // of silently getting legacy video with no explanation.
+    obj["video_mode"] = "legacy";
     return obj.dump();
 }
 

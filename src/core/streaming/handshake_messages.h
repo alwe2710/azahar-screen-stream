@@ -26,13 +26,23 @@
 
 namespace Core::Streaming {
 
-// What the client sends back in `hello_ack`. video_limits is parsed for
-// spec-completeness but not actually enforced -- see
-// BuildSessionReadyMessage()'s own comment on why this stream always reports
-// its fixed native size instead of implementing real negotiation.
+// What the client sends back in `hello_ack`. video_limits isn't parsed at
+// all -- see BuildSessionReadyMessage()'s own comment on why this stream
+// always reports its fixed native size instead of implementing real
+// negotiation. (Older comment here claimed video_limits WAS parsed "for
+// spec-completeness" -- that was never actually true, fixed while adding
+// video_mode below.)
+//
+// video_mode: what the client requested (finlink's protocol.md "tiles"/
+// "legacy"/"h264"/"h265", empty if unset/unrecognized) -- this stream type
+// doesn't support anything other than a full raw frame regardless (see
+// BuildSessionReadyMessage()), so this is parsed only so the server can
+// honestly report the fallback in session_ready.video_mode rather than
+// silently ignoring the request. Never actually changes server behavior.
 struct HandshakeAck {
     int protocol_version;
     int requested_slot;
+    std::string video_mode;
 };
 
 enum class HandshakeErrorCode {
