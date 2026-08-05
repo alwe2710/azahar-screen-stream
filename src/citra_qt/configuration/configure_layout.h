@@ -36,23 +36,23 @@ public:
 
     void SetupPerGameUI();
 
-    // Screen layout has no meaningful effect on what a finlink bottom-screen
+    // Screen layout has no meaningful effect on what a Unison bottom-screen
     // streaming client sees or controls (see core/streaming/
     // bottom_screen_stream.h) and changing it locally while a client is
     // connected would just be confusing, so this disables the tab's three
     // top-level setting groups (layout_group, custom_layout_group,
     // single_screen_layout_config_group) for as long as streaming is
-    // enabled -- except the streaming controls themselves (finlink_group, a
+    // enabled -- except the streaming controls themselves (unison_group, a
     // sibling of those three, never touched by this), since the user still
     // needs a way to turn streaming back off from here.
-    void SetFinlinkBlocked(bool blocked);
+    void SetUnisonBlocked(bool blocked);
 
 signals:
     // Emitted when the user clicks the checkbox itself (only possible while
     // !is_powered_on, see the constructor) -- ConfigureDialog uses this to
-    // keep the Input tab's finlink-blocked state live instead of only
+    // keep the Input tab's unison-blocked state live instead of only
     // reflecting whatever was true when the dialog was opened.
-    void FinlinkStreamingToggled(bool enabled);
+    void UnisonStreamingToggled(bool enabled);
 
 private:
     void updateShaders(Settings::StereoRenderOption stereo_option);
@@ -64,12 +64,12 @@ private:
     QColor bg_color;
     bool is_powered_on;
 
-    // finlink bottom-screen streaming controls, inserted in the constructor
+    // Unison bottom-screen streaming controls, inserted in the constructor
     // as a sibling of layout_group in ui->verticalLayout (right after it,
     // i.e. directly under the Screen Layout dropdown) -- deliberately not
     // nested inside any of the .ui file's own group boxes, so
-    // SetFinlinkBlocked() can disable those without also disabling the one
+    // SetUnisonBlocked() can disable those without also disabling the one
     // control that turns streaming back off.
-    QCheckBox* finlink_checkbox = nullptr;
-    QSpinBox* finlink_port_spinbox = nullptr;
+    QCheckBox* unison_checkbox = nullptr;
+    QSpinBox* unison_port_spinbox = nullptr;
 };

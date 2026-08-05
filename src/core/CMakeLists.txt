@@ -514,9 +514,9 @@ create_target_directory_groups(citra_core)
 target_link_libraries(citra_core PUBLIC citra_common PRIVATE audio_core network video_core)
 target_link_libraries(citra_core PRIVATE Boost::boost Boost::serialization Boost::iostreams httplib)
 target_link_libraries(citra_core PUBLIC dds-ktx PRIVATE cryptopp fmt lodepng open_source_archives)
-# streaming/: N3DS_BOTTOM_SCREEN finlink server (WebSocket handshake/framing
-# via finlink_core, JSON handshake messages via json-headers).
-target_link_libraries(citra_core PRIVATE finlink_core json-headers)
+# streaming/: N3DS_BOTTOM_SCREEN Unison server (WebSocket handshake/framing
+# via unison_core, JSON handshake messages via json-headers).
+target_link_libraries(citra_core PRIVATE unison_core json-headers)
 
 if (ENABLE_WEB_SERVICE)
     target_link_libraries(citra_core PRIVATE web_service)

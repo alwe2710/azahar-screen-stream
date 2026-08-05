@@ -44,14 +44,14 @@ public:
     /// Save the current input profile index
     void ApplyProfile();
 
-    // A finlink bottom-screen streaming client owns touch input while
+    // A Unison bottom-screen streaming client owns touch input while
     // connected (see core/hle/service/hid/hid.cpp's touch-override next to
     // BottomScreenStream()); remapping buttons/circle-pad locally still
     // works, but the touch device setting specifically would be silently
     // ignored, which is confusing enough that ConfigureDialog disables this
     // whole tab for as long as streaming is enabled rather than trying to
     // gate just the touch controls within it.
-    void SetFinlinkBlocked(bool blocked);
+    void SetUnisonBlocked(bool blocked);
 
 public slots:
     void OnHotkeysChanged(QList<QKeySequence> new_key_list);

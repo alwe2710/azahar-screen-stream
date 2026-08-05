@@ -4,14 +4,14 @@
 
 #pragma once
 
-// UDP discovery beacon for the bottom-screen streaming server, so finlink
+// UDP discovery beacon for the bottom-screen streaming server, so Unison
 // clients (3DS/Switch/NDS/Android/web) can find this Azahar instance on the
 // LAN the same way they find a dolphin-gba-stream instance -- both broadcast
-// the same `finlink_beacon` JSON shape on the same fixed port
-// (finlink/discovery.h's FINLINK_BEACON_PORT, re-declared as
+// the same `unison_beacon` JSON shape on the same fixed port
+// (unison/discovery.h's UNISON_BEACON_PORT, re-declared as
 // Core::Streaming::BEACON_PORT in stream_constants.h), so one client-side
 // listener works against either kind of server without caring which it's
-// looking at (see finlink docs/protocol.md's "Discovery-Beacon" section).
+// looking at (see Unison docs/protocol.md's "Discovery-Beacon" section).
 // Ported from the sibling dolphin-gba-stream project's
 // Source/Core/Core/HW/GBAStreamBeacon.h/.cpp: same message shape and
 // broadcast cadence, boost::asio UDP socket instead of SFML.

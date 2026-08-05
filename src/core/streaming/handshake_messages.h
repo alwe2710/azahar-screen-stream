@@ -6,7 +6,7 @@
 
 // App-level handshake (hello / hello_ack / session_ready / handshake_error)
 // for the N3DS_BOTTOM_SCREEN stream type, exchanged as WebSocket text frames
-// before any Video/Input binary frame, per finlink's docs/protocol.md.
+// before any Video/Input binary frame, per Unison's docs/protocol.md.
 // Ported from the sibling dolphin-gba-stream project's
 // Source/Core/Core/HW/GBAStreamHandshake.h/.cpp (same wire format, same
 // message shapes), simplified for this stream type's fixed single slot and
@@ -33,7 +33,7 @@ namespace Core::Streaming {
 // spec-completeness" -- that was never actually true, fixed while adding
 // video_mode below.)
 //
-// video_mode: what the client requested (finlink's protocol.md "tiles"/
+// video_mode: what the client requested (Unison's protocol.md "tiles"/
 // "legacy"/"h264"/"h265", empty if unset/unrecognized) -- this stream type
 // doesn't support anything other than a full raw frame regardless (see
 // BuildSessionReadyMessage()), so this is parsed only so the server can

@@ -6,7 +6,7 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include "audio_core/finlink_input.h"
+#include "audio_core/unison_input.h"
 #include "audio_core/input_details.h"
 #include "audio_core/null_input.h"
 #include "audio_core/static_input.h"
@@ -70,13 +70,13 @@ constexpr std::array input_details = {
     // No HAVE_MIC_PERMISSION-style gating here (unlike the real-device
     // backends above): permission is about the *host's* OS-level mic, and
     // this never touches that at all -- the actual microphone lives on
-    // whatever remote finlink client connects, gated by its own OS
+    // whatever remote Unison client connects, gated by its own OS
     // permission prompt (see PlayerActivity.onMicEnable, clients/android).
-    InputDetails{InputType::Finlink, "Finlink Remote Microphone", true,
+    InputDetails{InputType::Unison, "Unison Remote Microphone", true,
                  [](Core::System& system, std::string_view device_id) -> std::unique_ptr<Input> {
-                     return std::make_unique<FinlinkInput>(system);
+                     return std::make_unique<UnisonInput>(system);
                  },
-                 [] { return std::vector<std::string>{"Finlink Remote Microphone"}; }},
+                 [] { return std::vector<std::string>{"Unison Remote Microphone"}; }},
     InputDetails{InputType::Null, "None", false,
                  [](Core::System& system, std::string_view device_id) -> std::unique_ptr<Input> {
                      return std::make_unique<NullInput>();

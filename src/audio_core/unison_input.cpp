@@ -3,19 +3,19 @@
 // Refer to the license.txt file included.
 
 #include <cstring>
-#include "audio_core/finlink_input.h"
+#include "audio_core/unison_input.h"
 #include "core/core.h"
 #include "core/streaming/bottom_screen_stream.h"
 
 namespace AudioCore {
 
-FinlinkInput::FinlinkInput(Core::System& system_) : system(system_) {}
+UnisonInput::UnisonInput(Core::System& system_) : system(system_) {}
 
-FinlinkInput::~FinlinkInput() {
+UnisonInput::~UnisonInput() {
     StopSampling();
 }
 
-void FinlinkInput::StartSampling(const InputParameters& params) {
+void UnisonInput::StartSampling(const InputParameters& params) {
     parameters = params;
     is_sampling = true;
     if (auto* stream = system.BottomScreenStream()) {
@@ -23,18 +23,18 @@ void FinlinkInput::StartSampling(const InputParameters& params) {
     }
 }
 
-void FinlinkInput::StopSampling() {
+void UnisonInput::StopSampling() {
     is_sampling = false;
     if (auto* stream = system.BottomScreenStream()) {
         stream->SetMicWanted(false, 0);
     }
 }
 
-bool FinlinkInput::IsSampling() {
+bool UnisonInput::IsSampling() {
     return is_sampling;
 }
 
-void FinlinkInput::AdjustSampleRate(u32 sample_rate) {
+void UnisonInput::AdjustSampleRate(u32 sample_rate) {
     parameters.sample_rate = sample_rate;
     if (is_sampling) {
         if (auto* stream = system.BottomScreenStream()) {
@@ -43,7 +43,7 @@ void FinlinkInput::AdjustSampleRate(u32 sample_rate) {
     }
 }
 
-Samples FinlinkInput::Read() {
+Samples UnisonInput::Read() {
     if (!is_sampling) {
         return {};
     }

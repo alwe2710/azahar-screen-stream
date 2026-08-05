@@ -7,8 +7,8 @@
 #include <chrono>
 #include <utility>
 
-#include <finlink/deflate.h>
-#include <finlink/protocol.h>
+#include <unison/deflate.h>
+#include <unison/protocol.h>
 
 #include "common/logging/log.h"
 #include "core/core.h"
@@ -80,10 +80,10 @@ bool SendVideoFrame(boost::asio::ip::tcp::socket& socket, const std::vector<u8>&
     std::vector<u8> rgb565;
     ConvertBgra8ToRgb565(bgra8, STREAM_WIDTH, STREAM_HEIGHT, invert_y, rgb565);
 
-    std::vector<u8> compressed(finlink_deflate_max_size(rgb565.size()));
+    std::vector<u8> compressed(unison_deflate_max_size(rgb565.size()));
     size_t compressed_size = 0;
-    if (finlink_deflate_raw(rgb565.data(), rgb565.size(), compressed.data(), compressed.size(),
-                             &compressed_size) != FINLINK_DEFLATE_OK) {
+    if (unison_deflate_raw(rgb565.data(), rgb565.size(), compressed.data(), compressed.size(),
+                             &compressed_size) != UNISON_DEFLATE_OK) {
         LOG_ERROR(Core, "Bottom screen stream: failed to compress video frame");
         return false;
     }
@@ -91,7 +91,7 @@ bool SendVideoFrame(boost::asio::ip::tcp::socket& socket, const std::vector<u8>&
 
     std::vector<u8> message;
     message.reserve(10 + compressed.size());
-    message.push_back(static_cast<u8>(FINLINK_MSG_VIDEO));
+    message.push_back(static_cast<u8>(UNISON_MSG_VIDEO));
     AppendU32LE(message, STREAM_WIDTH);
     AppendU32LE(message, STREAM_HEIGHT);
     message.push_back(0); // format = 0: full frame, raw (non-indexed, non-tiled) RGB565.
@@ -137,7 +137,7 @@ Server::~Server() {
     }
 }
 
-std::optional<finlink_extended_input> Server::GetInputOverride() const {
+std::optional<unison_extended_input> Server::GetInputOverride() const {
     if (!input_active.load(std::memory_order_relaxed))
         return std::nullopt;
     std::lock_guard lock(input_mutex);
@@ -182,7 +182,7 @@ void Server::ServeConnection(std::shared_ptr<boost::asio::ip::tcp::socket> socke
         return;
 
     const auto frame = ReceiveOneWebSocketFrame(*socket, stop, std::chrono::seconds(5));
-    if (!frame || frame->opcode != FINLINK_WS_OPCODE_TEXT)
+    if (!frame || frame->opcode != UNISON_WS_OPCODE_TEXT)
         return;
 
     const auto ack = ParseHelloAck(frame->payload);
@@ -221,7 +221,7 @@ void Server::ServeConnection(std::shared_ptr<boost::asio::ip::tcp::socket> socke
     input_active = false;
     active = false;
     // Drop any mic audio this client sent but nobody drained yet -- left
-    // sitting here, it would otherwise get fed to FinlinkInput::Read() as
+    // sitting here, it would otherwise get fed to UnisonInput::Read() as
     // if it were fresh once a later session (or a belated poll from this
     // one) reads it, mislabeling stale audio as current.
     {
@@ -275,10 +275,10 @@ void Server::RunSession(boost::asio::ip::tcp::socket& socket) {
             }
             if (wanted != last_sent_mic_wanted ||
                 (wanted && sample_rate != last_sent_mic_sample_rate)) {
-                const finlink_mic_enable enable{wanted ? 1 : 0, sample_rate};
-                u8 payload[FINLINK_MIC_ENABLE_FRAME_SIZE];
-                finlink_build_mic_enable_frame(&enable, payload);
-                std::vector<u8> message(payload, payload + FINLINK_MIC_ENABLE_FRAME_SIZE);
+                const unison_mic_enable enable{wanted ? 1 : 0, sample_rate};
+                u8 payload[UNISON_MIC_ENABLE_FRAME_SIZE];
+                unison_build_mic_enable_frame(&enable, payload);
+                std::vector<u8> message(payload, payload + UNISON_MIC_ENABLE_FRAME_SIZE);
                 if (!SendWebSocketBinaryFrame(socket, message, stop))
                     return;
                 last_sent_mic_wanted = wanted;
@@ -300,29 +300,29 @@ void Server::RunSession(boost::asio::ip::tcp::socket& socket) {
                         return;
                     break;
                 }
-                if (parsed->opcode == FINLINK_WS_OPCODE_CLOSE)
+                if (parsed->opcode == UNISON_WS_OPCODE_CLOSE)
                     return;
-                if (parsed->opcode != FINLINK_WS_OPCODE_BINARY)
+                if (parsed->opcode != UNISON_WS_OPCODE_BINARY)
                     continue;
-                finlink_msg_type type;
-                if (finlink_peek_type(parsed->payload.data(), parsed->payload.size(), &type) !=
-                    FINLINK_OK)
+                unison_msg_type type;
+                if (unison_peek_type(parsed->payload.data(), parsed->payload.size(), &type) !=
+                    UNISON_OK)
                     continue;
-                if (type == FINLINK_MSG_INPUT) {
-                    finlink_extended_input input{};
-                    if (finlink_parse_extended_input_frame(parsed->payload.data(),
+                if (type == UNISON_MSG_INPUT) {
+                    unison_extended_input input{};
+                    if (unison_parse_extended_input_frame(parsed->payload.data(),
                                                             parsed->payload.size(),
-                                                            &input) == FINLINK_OK) {
+                                                            &input) == UNISON_OK) {
                         std::lock_guard lock(input_mutex);
                         latest_input = input;
                     }
-                } else if (type == FINLINK_MSG_MIC_AUDIO) {
-                    finlink_audio_frame audio;
-                    if (finlink_parse_mic_audio_frame(parsed->payload.data(),
+                } else if (type == UNISON_MSG_MIC_AUDIO) {
+                    unison_audio_frame audio;
+                    if (unison_parse_mic_audio_frame(parsed->payload.data(),
                                                        parsed->payload.size(),
-                                                       &audio) == FINLINK_OK) {
+                                                       &audio) == UNISON_OK) {
                         std::lock_guard lock(mic_mutex);
-                        // PollMicAudio()/FinlinkInput::Read() only ever see
+                        // PollMicAudio()/UnisonInput::Read() only ever see
                         // raw sample bytes, not a rate -- they trust the
                         // client to always send at whatever rate the last
                         // MIC_ENABLE requested. Reject anything else here
@@ -331,7 +331,7 @@ void Server::RunSession(boost::asio::ip::tcp::socket& socket) {
                         // as if it were all mic_wanted_sample_rate.
                         if (audio.sample_rate != mic_wanted_sample_rate)
                             continue;
-                        // ~2s cap at typical mic rates -- if FinlinkInput::
+                        // ~2s cap at typical mic rates -- if UnisonInput::
                         // Read() ever falls behind that far, drop the
                         // backlog rather than grow it unboundedly (same
                         // tradeoff WiiuGamepadStream::SubmitGamepadAudio()

@@ -324,7 +324,7 @@ public:
         return *app_loader;
     }
 
-    /// The N3DS_BOTTOM_SCREEN finlink streaming server (src/core/streaming/),
+    /// The N3DS_BOTTOM_SCREEN Unison streaming server (src/core/streaming/),
     /// non-null only while Settings::values.enable_bottom_screen_streaming
     /// is set and construction succeeded. Used by the HID module to check
     /// for a remote touch override -- see Streaming::Server::GetTouchOverride().
@@ -500,7 +500,7 @@ private:
     std::unique_ptr<RPC::Server> rpc_server;
 #endif
 
-    /// N3DS_BOTTOM_SCREEN finlink streaming server, see BottomScreenStream().
+    /// N3DS_BOTTOM_SCREEN Unison streaming server, see BottomScreenStream().
     std::unique_ptr<Streaming::Server> bottom_screen_stream;
 
     std::unique_ptr<Service::FS::ArchiveManager> archive_manager;

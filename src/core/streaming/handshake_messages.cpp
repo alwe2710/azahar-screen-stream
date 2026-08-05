@@ -92,7 +92,7 @@ std::string BuildSessionReadyMessage() {
     // stream type has no TILES/H264/H265 encoder at all, only ever sends a
     // full raw RGB565 frame (SendVideoFrame's hardcoded format=0, see
     // bottom_screen_stream.cpp). Reporting the honest fallback here, per
-    // finlink's docs/protocol.md "Video-mode fallback", is what lets a
+    // Unison's docs/protocol.md "Video-mode fallback", is what lets a
     // client that requested something else show a fallback prompt instead
     // of silently getting legacy video with no explanation.
     obj["video_mode"] = "legacy";

@@ -55,7 +55,7 @@ std::string Beacon::BuildMessage() const {
         title = EMULATOR_IDENTIFIER;
 
     nlohmann::json obj;
-    obj["type"] = "finlink_beacon";
+    obj["type"] = "unison_beacon";
     obj["protocol_version"] = STREAM_PROTOCOL_VERSION;
     obj["emulator_identifier"] = EMULATOR_IDENTIFIER;
     obj["game_title"] = title;

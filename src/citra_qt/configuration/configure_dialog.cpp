@@ -43,15 +43,15 @@ ConfigureDialog::ConfigureDialog(QWidget* parent, HotkeyRegistry& registry_, Cor
       debug_tab{std::make_unique<ConfigureDebug>(is_powered_on, this)},
       storage_tab{std::make_unique<ConfigureStorage>(is_powered_on, this)},
       web_tab{std::make_unique<ConfigureWeb>(this)}, ui_tab{std::make_unique<ConfigureUi>(this)},
-      finlink_streaming_blocked{Settings::values.enable_bottom_screen_streaming.GetValue()} {
+      unison_streaming_blocked{Settings::values.enable_bottom_screen_streaming.GetValue()} {
     Settings::SetConfiguringGlobal(true);
 
     ui->setupUi(this);
 
-    layout_tab->SetFinlinkBlocked(finlink_streaming_blocked);
-    input_tab->SetFinlinkBlocked(finlink_streaming_blocked);
-    connect(layout_tab.get(), &ConfigureLayout::FinlinkStreamingToggled, this,
-            &ConfigureDialog::OnFinlinkStreamingToggled);
+    layout_tab->SetUnisonBlocked(unison_streaming_blocked);
+    input_tab->SetUnisonBlocked(unison_streaming_blocked);
+    connect(layout_tab.get(), &ConfigureLayout::UnisonStreamingToggled, this,
+            &ConfigureDialog::OnUnisonStreamingToggled);
 
     ui->tabWidget->addTab(general_tab.get(), tr("General"));
     ui->tabWidget->addTab(system_tab.get(), tr("System"));
@@ -207,7 +207,7 @@ void ConfigureDialog::UpdateVisibleTabs() {
 
     for (const auto tab : tabs) {
         const int index = ui->tabWidget->addTab(tab, TabTitle(tab, widgets.at(tab)));
-        if (finlink_streaming_blocked && tab == input_tab.get()) {
+        if (unison_streaming_blocked && tab == input_tab.get()) {
             ui->tabWidget->setTabEnabled(index, false);
         }
     }
@@ -217,19 +217,19 @@ QString ConfigureDialog::TabTitle(QWidget* tab, const QString& base) const {
     // layout_tab is deliberately not covered here -- it stays selectable and
     // labeled normally even while streaming is on; ConfigureLayout disables
     // everything on the page except its own streaming controls instead (see
-    // ConfigureLayout::SetFinlinkBlocked). Only input_tab still gets the
+    // ConfigureLayout::SetUnisonBlocked). Only input_tab still gets the
     // whole-tab treatment, since none of it is reachable from within itself
     // the way turning streaming off is from within the Layout tab.
-    if (finlink_streaming_blocked && tab == input_tab.get()) {
-        return base + tr(" (blocked by finlink)");
+    if (unison_streaming_blocked && tab == input_tab.get()) {
+        return base + tr(" (blocked by Unison)");
     }
     return base;
 }
 
-void ConfigureDialog::OnFinlinkStreamingToggled(bool enabled) {
-    finlink_streaming_blocked = enabled;
-    layout_tab->SetFinlinkBlocked(enabled);
-    input_tab->SetFinlinkBlocked(enabled);
+void ConfigureDialog::OnUnisonStreamingToggled(bool enabled) {
+    unison_streaming_blocked = enabled;
+    layout_tab->SetUnisonBlocked(enabled);
+    input_tab->SetUnisonBlocked(enabled);
     // Patches the Input tab's entry directly instead of going through
     // UpdateVisibleTabs()'s full clear()+rebuild: this slot fires while the
     // user is sitting in the Layout tab (Graphics category), so Input tab
@@ -238,7 +238,7 @@ void ConfigureDialog::OnFinlinkStreamingToggled(bool enabled) {
     // where toggling this checkbox bounced the dialog's whole category
     // selection back to General. UpdateVisibleTabs() still recomputes this
     // correctly and safely on its own the next time the user switches to
-    // the Controls category, since it reads finlink_streaming_blocked fresh.
+    // the Controls category, since it reads unison_streaming_blocked fresh.
     for (int i = 0; i < ui->tabWidget->count(); i++) {
         if (ui->tabWidget->widget(i) == input_tab.get()) {
             ui->tabWidget->setTabText(i, TabTitle(input_tab.get(), tr("Input")));

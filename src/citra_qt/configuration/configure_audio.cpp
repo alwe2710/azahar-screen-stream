@@ -46,7 +46,7 @@ ConfigureAudio::ConfigureAudio(bool is_powered_on, QWidget* parent)
     // Whenever bottom-screen streaming is enabled (not just while a client
     // happens to be connected -- BottomScreenStream() is non-null for the
     // whole session once the feature is turned on, see System::Init()),
-    // Service::MIC::CreateMic() (mic_u.cpp) forces the mic to the Finlink
+    // Service::MIC::CreateMic() (mic_u.cpp) forces the mic to the Unison
     // input backend regardless of these settings, so gray them out rather
     // than leave a choice that silently has no effect. Snapshotted once
     // here at dialog-construction time, same as emulation_combo_box's
@@ -55,7 +55,7 @@ ConfigureAudio::ConfigureAudio(bool is_powered_on, QWidget* parent)
     if (is_powered_on && Core::System::GetInstance().BottomScreenStream()) {
         const QString reason =
             tr("Disabled while bottom-screen streaming is enabled: the microphone is forced to "
-               "the Finlink input backend.");
+               "the Unison input backend.");
         ui->input_type_combo_box->setEnabled(false);
         ui->input_type_combo_box->setToolTip(reason);
         ui->input_device_combo_box->setEnabled(false);

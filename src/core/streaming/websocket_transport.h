@@ -13,10 +13,10 @@
 //
 // Ported from the sibling dolphin-gba-stream project's
 // Source/Core/Core/HW/GBAStreamWebSocket.h, same wire format (both
-// implement finlink's docs/protocol.md), different transport primitives:
+// implement Unison's docs/protocol.md), different transport primitives:
 // boost::asio::ip::tcp::socket instead of SFML, CryptoPP instead of mbedtls
-// for SHA1/base64. Incoming frame parsing reuses finlink_ws_parse_frame()
-// (core/include/finlink/websocket.h) directly rather than hand-rolling it a
+// for SHA1/base64. Incoming frame parsing reuses unison_ws_parse_frame()
+// (core/include/unison/websocket.h) directly rather than hand-rolling it a
 // third time -- its unmasking logic is generic despite being documented from
 // a client's perspective (see that header's own comment).
 
@@ -35,7 +35,7 @@
 #include <cryptopp/sha.h>
 
 #include "common/common_types.h"
-#include "finlink/websocket.h"
+#include "unison/websocket.h"
 
 namespace Core::Streaming {
 
@@ -117,12 +117,12 @@ inline bool IsWebSocketUpgradeRequest(const HttpRequest& request) {
 // has to fully reconnect) rather than just this one frame arriving late --
 // 10 seconds absorbs that without meaningfully changing behavior for an
 // actually-dead peer, which was never going to un-stall in the next 7
-// seconds either. finlink_core now has this as a named constant,
-// FINLINK_WS_SEND_TIMEOUT_MS (core/include/finlink/websocket.h) -- not
-// referenced directly here yet because externals/finlink tracks finlink's
+// seconds either. unison_core now has this as a named constant,
+// UNISON_WS_SEND_TIMEOUT_MS (core/include/unison/websocket.h) -- not
+// referenced directly here yet because externals/unison tracks Unison's
 // main branch (per .gitmodules), which doesn't have that commit yet (it
-// landed on finlink's transcoding branch, still unmerged as of this fix).
-// Switch this literal to the constant once externals/finlink is updated
+// landed on Unison's transcoding branch, still unmerged as of this fix).
+// Switch this literal to the constant once externals/unison is updated
 // past that point.
 inline bool SendAllBytes(boost::asio::ip::tcp::socket& socket, const void* data, size_t size,
                           const std::atomic_bool& stop_flag) {
@@ -180,7 +180,7 @@ constexpr u8 WS_OPCODE_BINARY = 0x2;
 constexpr u8 WS_OPCODE_CLOSE = 0x8;
 
 // Sends one unmasked, unfragmented server->client frame (server frames in
-// this protocol are never masked, see finlink/websocket.h's own header
+// this protocol are never masked, see unison/websocket.h's own header
 // comment on what it assumes of us).
 inline bool SendWebSocketFrame(boost::asio::ip::tcp::socket& socket, u8 opcode,
                                 const std::vector<u8>& payload, const std::atomic_bool& stop_flag) {
@@ -218,12 +218,12 @@ inline bool SendWebSocketTextFrame(boost::asio::ip::tcp::socket& socket, const s
 }
 
 struct ReceivedFrame {
-    finlink_ws_opcode opcode;
+    unison_ws_opcode opcode;
     std::vector<u8> payload;
 };
 
 // Tries to parse one client->server (masked) frame from the front of `buf`
-// via finlink_ws_parse_frame(), consuming those bytes from `buf` on success.
+// via unison_ws_parse_frame(), consuming those bytes from `buf` on success.
 // Returns nullopt (leaving `buf` untouched) if there isn't a full frame yet;
 // sets `*protocol_error` if the frame was malformed/oversized/fragmented
 // (buf is fully consumed in that case too, since there's nothing more useful
@@ -232,11 +232,11 @@ inline std::optional<ReceivedFrame> TryParseOneFrame(std::vector<u8>& buf, bool*
     *protocol_error = false;
     if (buf.empty())
         return std::nullopt;
-    finlink_ws_frame frame{};
-    const auto status = finlink_ws_parse_frame(buf.data(), buf.size(), &frame);
-    if (status == FINLINK_WS_FRAME_INCOMPLETE)
+    unison_ws_frame frame{};
+    const auto status = unison_ws_parse_frame(buf.data(), buf.size(), &frame);
+    if (status == UNISON_WS_FRAME_INCOMPLETE)
         return std::nullopt;
-    if (status == FINLINK_WS_FRAME_ERR) {
+    if (status == UNISON_WS_FRAME_ERR) {
         *protocol_error = true;
         buf.clear();
         return std::nullopt;

@@ -258,16 +258,16 @@ else()
     target_include_directories(enet INTERFACE ./enet/include)
 endif()
 
-# finlink_core -- portable C library for the finlink streaming protocol's
+# unison_core -- portable C library for the Unison streaming protocol's
 # WebSocket handshake/framing and message (de)serialization (video/audio/
 # input, including n3ds_touch for this project's own bottom-screen stream),
-# used by src/core/streaming/. Vendored as the whole finlink repo (matching
+# used by src/core/streaming/. Vendored as the whole Unison repo (matching
 # how the sibling dolphin-gba-stream project already depends on it, see its
-# Externals/finlink), only core/ is actually built here. FINLINK_BUILD_TESTS
-# is forced off: finlink/core/CMakeLists.txt defaults it on, but its own
+# Externals/unison), only core/ is actually built here. UNISON_BUILD_TESTS
+# is forced off: unison/core/CMakeLists.txt defaults it on, but its own
 # Catch2-free custom test targets aren't meaningful wired into this build.
-set(FINLINK_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-add_subdirectory(finlink/core EXCLUDE_FROM_ALL)
+set(UNISON_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+add_subdirectory(unison/core EXCLUDE_FROM_ALL)
 
 # Cubeb
 if (ENABLE_CUBEB)

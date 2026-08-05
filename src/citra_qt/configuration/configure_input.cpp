@@ -723,6 +723,6 @@ void ConfigureInput::WarnProposedProfileNameIsDuplicate() {
                          tr("Profile name already exists. Please choose a different name."));
 }
 
-void ConfigureInput::SetFinlinkBlocked(bool blocked) {
+void ConfigureInput::SetUnisonBlocked(bool blocked) {
     setEnabled(!blocked);
 }

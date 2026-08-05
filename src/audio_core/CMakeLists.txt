@@ -20,8 +20,8 @@ add_library(audio_core STATIC EXCLUDE_FROM_ALL
     hle/source.h
     lle/lle.cpp
     lle/lle.h
-    finlink_input.cpp
-    finlink_input.h
+    unison_input.cpp
+    unison_input.h
     input.h
     input_details.cpp
     input_details.h
@@ -48,12 +48,12 @@ create_target_directory_groups(audio_core)
 
 target_link_libraries(audio_core PUBLIC citra_common citra_core)
 target_link_libraries(audio_core PRIVATE faad2 SoundTouch teakra)
-# finlink_input.cpp includes core/streaming/bottom_screen_stream.h, which
-# includes <finlink/protocol.h> -- citra_core already links finlink_core
+# unison_input.cpp includes core/streaming/bottom_screen_stream.h, which
+# includes <unison/protocol.h> -- citra_core already links unison_core
 # (src/core/CMakeLists.txt) but only PRIVATEly, so it doesn't propagate the
 # include path this far; needs its own link here too, same as every other
 # non-owning target that merely #includes that header.
-target_link_libraries(audio_core PRIVATE finlink_core)
+target_link_libraries(audio_core PRIVATE unison_core)
 
 if(ENABLE_SDL2)
     target_link_libraries(audio_core PRIVATE SDL2::SDL2)

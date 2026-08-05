@@ -4306,9 +4306,9 @@ void GMainWindow::UpdateUISettings() {
 }
 
 void GMainWindow::SyncMenuUISettings() {
-    // Same reasoning as ConfigureLayout::SetFinlinkBlocked (configuration/
+    // Same reasoning as ConfigureLayout::SetUnisonBlocked (configuration/
     // configure_layout.cpp): this menu is just another way to change screen
-    // layout, so it needs the same finlink-streaming gate the Settings
+    // layout, so it needs the same unison-streaming gate the Settings
     // dialog's Layout tab has, or the tab-level block there would be
     // trivially bypassable from here.
     ui->menu_Screen_Layout->setEnabled(!Settings::values.enable_bottom_screen_streaming.GetValue());

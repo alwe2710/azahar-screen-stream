@@ -1,13 +1,13 @@
-name: finlink smoke
+name: Unison smoke
 
 # Fork-owned workflow, deliberately separate from the upstream-inherited
 # citra-build.yml so future syncs from azahar-emu/azahar don't collide with
-# anything finlink-specific. Part of the finlink CI pipeline's build-smoke
-# stage; see finlink/docs/capabilities.md and the 5-repo drift snapshot in
+# anything unison-specific. Part of the Unison CI pipeline's build-smoke
+# stage; see unison/docs/capabilities.md and the 5-repo drift snapshot in
 # the plan this came from.
 #
 # citra-build.yml already triggers on push to every branch (`branches:
-# ["*"]`), which covers wherever this fork's finlink work actually happens
+# ["*"]`), which covers wherever this fork's Unison work actually happens
 # (currently `master`) -- no separate trigger fix needed here, unlike Cemu.
 
 on:
@@ -17,8 +17,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  finlink-freshness:
-    name: externals/finlink freshness
+  unison-freshness:
+    name: externals/unison freshness
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -26,26 +26,26 @@ jobs:
           submodules: false # only need the gitlink SHA, not an actual checkout
 
       # Diagnostic only: reports drift, doesn't touch the submodule pin
-      # itself. Unlike Cemu's dependencies/finlink (which tracks `main` in
+      # itself. Unlike Cemu's dependencies/unison (which tracks `main` in
       # .gitmodules but whose real work happens on `transcoding` -- a real
       # mismatch), this fork's .gitmodules already declares the branch we
       # actually want (`main`), so there's no separate declared-branch
       # check here, just the commit-freshness comparison. Note: as of this
-      # check being written, finlink's own `main` is itself still well
+      # check being written, Unison's own `main` is itself still well
       # behind `transcoding` (unmerged) -- so "matches main" is a much
-      # lower bar than "has every feature finlink/Cemu currently have".
-      - name: Compare pinned commit against finlink's main branch
+      # lower bar than "has every feature unison/Cemu currently have".
+      - name: Compare pinned commit against Unison's main branch
         run: |
           set -euo pipefail
           EXPECTED_BRANCH="main"
 
-          PINNED_SHA="$(git ls-tree HEAD externals/finlink | awk '{print $3}')"
-          LATEST_SHA="$(git ls-remote https://github.com/alwe2710/finlink.git "refs/heads/$EXPECTED_BRANCH" | awk '{print $1}')"
+          PINNED_SHA="$(git ls-tree HEAD externals/unison | awk '{print $3}')"
+          LATEST_SHA="$(git ls-remote https://github.com/alwe2710/Unison.git "refs/heads/$EXPECTED_BRANCH" | awk '{print $1}')"
 
-          echo "Pinned externals/finlink commit: $PINNED_SHA"
-          echo "Latest commit on finlink's $EXPECTED_BRANCH: $LATEST_SHA"
+          echo "Pinned externals/unison commit: $PINNED_SHA"
+          echo "Latest commit on Unison's $EXPECTED_BRANCH: $LATEST_SHA"
 
           if [ "$PINNED_SHA" != "$LATEST_SHA" ]; then
-            echo "::warning::externals/finlink is pinned at $PINNED_SHA, which is behind finlink's $EXPECTED_BRANCH tip ($LATEST_SHA). Update with: git submodule update --remote externals/finlink && git add externals/finlink && git commit"
+            echo "::warning::externals/unison is pinned at $PINNED_SHA, which is behind Unison's $EXPECTED_BRANCH tip ($LATEST_SHA). Update with: git submodule update --remote externals/unison && git add externals/unison && git commit"
             exit 1
           fi

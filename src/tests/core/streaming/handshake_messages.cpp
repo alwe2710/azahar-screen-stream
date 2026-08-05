@@ -1,26 +1,26 @@
 // core/streaming/handshake_messages.{h,cpp} had zero test coverage before
 // this file, despite being exactly where hello_ack.video_mode gets parsed
 // and session_ready.video_mode gets reported -- the two fields the
-// "Video-mode fallback" negotiation feature (finlink/docs/protocol.md)
+// "Video-mode fallback" negotiation feature (unison/docs/protocol.md)
 // actually runs on.
 //
-// externals/finlink (a git submodule tracking finlink's main branch) still
+// externals/unison (a git submodule tracking Unison's main branch) still
 // predates session_ready.video_mode entirely as of this file's own writing
-// (finlink's main is itself well behind its transcoding branch, unmerged)
-// -- finlink_session_ready here has no video_mode field to read at all, so
+// (Unison's main is itself well behind its transcoding branch, unmerged)
+// -- unison_session_ready here has no video_mode field to read at all, so
 // that one assertion below is a plain JSON substring check instead of a
-// round-trip through finlink_parse_session_ready(), which is used for
+// round-trip through unison_parse_session_ready(), which is used for
 // everything else this stream type's session_ready reply carries (a field
 // that already existed before video_mode was appended, so its layout is
 // unaffected either way). Switch it to a real round-trip once
-// externals/finlink is updated past that point (same situation as
-// FinlinkWebSocket.h's FINLINK_WS_SEND_TIMEOUT_MS comment).
+// externals/unison is updated past that point (same situation as
+// UnisonWebSocket.h's UNISON_WS_SEND_TIMEOUT_MS comment).
 
 #include <catch2/catch_test_macros.hpp>
 #include "core/streaming/handshake_messages.h"
 #include "core/streaming/stream_constants.h"
 
-#include "finlink/handshake.h"
+#include "unison/handshake.h"
 
 using namespace Core::Streaming;
 
@@ -38,12 +38,12 @@ TEST_CASE("Streaming::BuildHelloMessage", "[core][streaming]") {
     // comment) -- must never claim otherwise.
     REQUIRE(hello.find("\"audio\"") == std::string::npos);
 
-    // finlink_hello's own shape is unaffected by the video_mode feature (it
+    // unison_hello's own shape is unaffected by the video_mode feature (it
     // never had that field to begin with, unlike session_ready), so this
-    // round-trip is safe even against the stale externals/finlink build.
-    finlink_hello parsed;
-    REQUIRE(finlink_parse_hello(reinterpret_cast<const uint8_t*>(hello.data()), hello.size(), &parsed) ==
-            FINLINK_HANDSHAKE_OK);
+    // round-trip is safe even against the stale externals/unison build.
+    unison_hello parsed;
+    REQUIRE(unison_parse_hello(reinterpret_cast<const uint8_t*>(hello.data()), hello.size(), &parsed) ==
+            UNISON_HANDSHAKE_OK);
     REQUIRE(parsed.protocol_version == STREAM_PROTOCOL_VERSION);
     REQUIRE(std::string(parsed.stream_type) == STREAM_TYPE);
     REQUIRE(!parsed.has_audio);
@@ -66,7 +66,7 @@ TEST_CASE("Streaming::ParseHelloAck video_mode", "[core][streaming]") {
     // acts on this value, only carries it through for reporting, so
     // (unlike Cemu's stricter whitelist-and-default-to-tiles) it accepts
     // and stores whatever string was actually sent, verbatim. This part is
-    // azahar's own HandshakeAck struct, unrelated to finlink_core's
+    // azahar's own HandshakeAck struct, unrelated to unison_core's
     // (unpatched) one, so no staleness concern here.
     for (const std::string mode : {"tiles", "legacy", "h264", "h265", "vp9"}) {
         const std::string json =
@@ -93,15 +93,15 @@ TEST_CASE("Streaming::BuildSessionReadyMessage always reports legacy", "[core][s
     const std::string ready_json = BuildSessionReadyMessage();
     REQUIRE(ready_json.find("\"message\":\"session_ready\"") != std::string::npos);
     // Plain substring check, not a round-trip -- see this file's own top
-    // comment on why finlink_session_ready.video_mode isn't safe to read
-    // via the currently-vendored finlink_core here.
+    // comment on why unison_session_ready.video_mode isn't safe to read
+    // via the currently-vendored unison_core here.
     REQUIRE(ready_json.find("\"video_mode\":\"legacy\"") != std::string::npos);
 
     // width/height/audio/redirect all predate video_mode's addition to
     // this struct, at unchanged offsets -- safe to round-trip.
-    finlink_session_ready parsed;
-    REQUIRE(finlink_parse_session_ready(reinterpret_cast<const uint8_t*>(ready_json.data()),
-                                         ready_json.size(), &parsed) == FINLINK_HANDSHAKE_OK);
+    unison_session_ready parsed;
+    REQUIRE(unison_parse_session_ready(reinterpret_cast<const uint8_t*>(ready_json.data()),
+                                         ready_json.size(), &parsed) == UNISON_HANDSHAKE_OK);
     REQUIRE(parsed.video.width == STREAM_WIDTH);
     REQUIRE(parsed.video.height == STREAM_HEIGHT);
     // No audio, no redirect for this stream type -- see
@@ -115,9 +115,9 @@ TEST_CASE("Streaming::BuildHandshakeErrorMessage", "[core][streaming]") {
         BuildHandshakeErrorMessage(HandshakeErrorCode::SlotUnavailable,
                                     "Bottom screen stream already has an active client");
 
-    finlink_handshake_error parsed;
-    REQUIRE(finlink_parse_handshake_error(reinterpret_cast<const uint8_t*>(err_json.data()),
-                                           err_json.size(), &parsed) == FINLINK_HANDSHAKE_OK);
+    unison_handshake_error parsed;
+    REQUIRE(unison_parse_handshake_error(reinterpret_cast<const uint8_t*>(err_json.data()),
+                                           err_json.size(), &parsed) == UNISON_HANDSHAKE_OK);
     REQUIRE(std::string(parsed.code) == "slot_unavailable");
     REQUIRE(std::string(parsed.detail) == "Bottom screen stream already has an active client");
 }

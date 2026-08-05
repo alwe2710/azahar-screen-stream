@@ -4,9 +4,9 @@
 
 #pragma once
 
-// Server implementation for the N3DS_BOTTOM_SCREEN finlink stream type: a
+// Server implementation for the N3DS_BOTTOM_SCREEN Unison stream type: a
 // single-slot WebSocket server that streams the bottom screen to one remote
-// client and accepts touch input back, per finlink's docs/protocol.md.
+// client and accepts touch input back, per Unison's docs/protocol.md.
 //
 // Lifecycle mirrors Core::RPC::Server (src/core/rpc/server.h): constructed
 // in System::Init() (after `gpu`, since capture needs
@@ -34,7 +34,7 @@
 #include <vector>
 
 #include <boost/asio.hpp>
-#include <finlink/protocol.h>
+#include <unison/protocol.h>
 
 #include "common/common_types.h"
 #include "core/frontend/framebuffer_layout.h"
@@ -60,31 +60,31 @@ public:
     // per pad update while a client is actively streaming. nullopt whenever
     // no client is in an active (post-session_ready) session -- callers
     // should fall back to local input in that case, not just leave the last
-    // remote state sitting there un-refreshed. finlink_extended_input
-    // itself (finlink/protocol.h) is the wire type this is parsed from
+    // remote state sitting there un-refreshed. unison_extended_input
+    // itself (unison/protocol.h) is the wire type this is parsed from
     // (input_encoding "n3ds_touch_and_buttons", stream_constants.h) --
     // reused directly rather than wrapped in an Azahar-local struct, since
     // nothing here transforms it.
-    [[nodiscard]] std::optional<finlink_extended_input> GetInputOverride() const;
+    [[nodiscard]] std::optional<unison_extended_input> GetInputOverride() const;
 
     // Mic input forwarding -- lets the console's microphone (Service::MIC,
     // src/core/hle/service/mic/mic_u.cpp) be sourced from the connected
     // client's own real microphone instead of a host device. Read by
-    // AudioCore::FinlinkInput (audio_core/finlink_input.h), the Input
+    // AudioCore::UnisonInput (audio_core/unison_input.h), the Input
     // backend a user selects in Settings the same way they'd pick Cubeb or
     // OpenAL.
     //
     // SetMicWanted mirrors real mic hardware: the physical mic is only
     // actually active while a game has it powered on and is sampling, not
     // continuously just because a stream is connected -- called from
-    // FinlinkInput::StartSampling()/StopSampling()/AdjustSampleRate(),
-    // which causes RunSession to send a FINLINK_MSG_MIC_ENABLE to the
+    // UnisonInput::StartSampling()/StopSampling()/AdjustSampleRate(),
+    // which causes RunSession to send a UNISON_MSG_MIC_ENABLE to the
     // client on the next loop iteration if the wanted state actually
     // changed (edge-triggered, not resent every iteration).
     void SetMicWanted(bool wanted, u32 sample_rate);
 
     // Drains and returns whatever mic audio the client has sent since the
-    // last call (never blocks) -- FinlinkInput::Read() polls this once per
+    // last call (never blocks) -- UnisonInput::Read() polls this once per
     // AX tick. Empty if nothing new has arrived. Raw s16le bytes, mono
     // (matches AudioCore::Samples' own "raw bytes, host-native s16 for a
     // 16-bit input" convention, see CubebInput::Read()).
@@ -159,7 +159,7 @@ private:
     // just read fresh by GetInputOverride() every pad update instead), a
     // much higher rate than frame_mutex's per-video-frame cadence.
     mutable std::mutex input_mutex;
-    finlink_extended_input latest_input{};
+    unison_extended_input latest_input{};
 
     // Guards all mic-related state below -- both directions (the console's
     // want-state going out, the client's captured audio coming in) share

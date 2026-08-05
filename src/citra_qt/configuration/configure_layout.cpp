@@ -22,31 +22,31 @@ ConfigureLayout::ConfigureLayout(bool is_powered_on_, QWidget* parent)
     : QWidget(parent), ui(std::make_unique<Ui::ConfigureLayout>()), is_powered_on{is_powered_on_} {
     ui->setupUi(this);
 
-    // finlink_group is inserted as its own top-level item in
+    // unison_group is inserted as its own top-level item in
     // ui->verticalLayout (scrollAreaWidgetContents' layout), right after
     // ui->layout_group (the "Screens" box the Layout dropdown itself lives
     // in) -- as close to "directly under the dropdown" as it can be while
-    // still being a widget SetFinlinkBlocked() can leave enabled: Qt ties a
+    // still being a widget SetUnisonBlocked() can leave enabled: Qt ties a
     // widget's effective enabled state to its actual parent widget, which
     // addWidget()/insertWidget() sets to whatever widget owns the target
     // layout, not to how the layout is nested visually. Being a *sibling* of
     // layout_group (rather than nested inside its own verticalLayout_3) is
     // what makes it possible to disable layout_group -- and the tab's other
     // two top-level groups -- without disabling this too.
-    auto* finlink_group = new QGroupBox(tr("Finlink Bildschirm-Streaming"), this);
-    auto* finlink_layout = new QGridLayout(finlink_group);
-    finlink_checkbox = new QCheckBox(tr("Enable bottom screen streaming (finlink)"), finlink_group);
-    finlink_port_spinbox = new QSpinBox(finlink_group);
-    finlink_port_spinbox->setMaximum(65535);
-    finlink_layout->addWidget(finlink_checkbox, 0, 0);
-    finlink_layout->addWidget(new QLabel(tr("Port:"), finlink_group), 0, 1);
-    finlink_layout->addWidget(finlink_port_spinbox, 0, 2);
-    finlink_layout->setColumnStretch(0, 1);
-    ui->verticalLayout->insertWidget(1, finlink_group);
+    auto* unison_group = new QGroupBox(tr("Unison Bildschirm-Streaming"), this);
+    auto* unison_layout = new QGridLayout(unison_group);
+    unison_checkbox = new QCheckBox(tr("Enable bottom screen streaming (Unison)"), unison_group);
+    unison_port_spinbox = new QSpinBox(unison_group);
+    unison_port_spinbox->setMaximum(65535);
+    unison_layout->addWidget(unison_checkbox, 0, 0);
+    unison_layout->addWidget(new QLabel(tr("Port:"), unison_group), 0, 1);
+    unison_layout->addWidget(unison_port_spinbox, 0, 2);
+    unison_layout->setColumnStretch(0, 1);
+    ui->verticalLayout->insertWidget(1, unison_group);
 
-    finlink_checkbox->setEnabled(!is_powered_on);
-    finlink_port_spinbox->setEnabled(!is_powered_on);
-    connect(finlink_checkbox, &QCheckBox::clicked, this, [this](bool checked) {
+    unison_checkbox->setEnabled(!is_powered_on);
+    unison_port_spinbox->setEnabled(!is_powered_on);
+    connect(unison_checkbox, &QCheckBox::clicked, this, [this](bool checked) {
         if (checked) {
             // The remote client now owns the bottom screen's touch input
             // (core/hle/service/hid/hid.cpp) -- showing it locally too is
@@ -58,7 +58,7 @@ ConfigureLayout::ConfigureLayout(bool is_powered_on_, QWidget* parent)
                 static_cast<int>(Settings::LayoutOption::SingleScreen));
             ui->toggle_swap_screen->setChecked(false);
         }
-        emit FinlinkStreamingToggled(checked);
+        emit UnisonStreamingToggled(checked);
     });
 
     SetupPerGameUI();
@@ -212,8 +212,8 @@ void ConfigureLayout::SetConfiguration() {
     const QIcon color_icon(pixmap);
     ui->bg_button->setIcon(color_icon);
 
-    finlink_checkbox->setChecked(Settings::values.enable_bottom_screen_streaming.GetValue());
-    finlink_port_spinbox->setValue(Settings::values.bottom_screen_streaming_port.GetValue());
+    unison_checkbox->setChecked(Settings::values.enable_bottom_screen_streaming.GetValue());
+    unison_port_spinbox->setValue(Settings::values.bottom_screen_streaming_port.GetValue());
 }
 
 void ConfigureLayout::RetranslateUI() {
@@ -252,9 +252,9 @@ void ConfigureLayout::ApplyConfiguration() {
     Settings::values.bg_green = static_cast<float>(bg_color.greenF());
     Settings::values.bg_blue = static_cast<float>(bg_color.blueF());
 
-    Settings::values.enable_bottom_screen_streaming = finlink_checkbox->isChecked();
+    Settings::values.enable_bottom_screen_streaming = unison_checkbox->isChecked();
     Settings::values.bottom_screen_streaming_port =
-        static_cast<u16>(finlink_port_spinbox->value());
+        static_cast<u16>(unison_port_spinbox->value());
 }
 
 void ConfigureLayout::SetupPerGameUI() {
@@ -277,8 +277,8 @@ void ConfigureLayout::SetupPerGameUI() {
         static_cast<int>(Settings::values.layout_option.GetValue(true)));
 }
 
-void ConfigureLayout::SetFinlinkBlocked(bool blocked) {
-    // The tab's three top-level setting groups get disabled -- finlink_group
+void ConfigureLayout::SetUnisonBlocked(bool blocked) {
+    // The tab's three top-level setting groups get disabled -- unison_group
     // (inserted as a sibling of these in the constructor) is deliberately
     // not among them, so the checkbox stays reachable to turn streaming
     // back off.

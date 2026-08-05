@@ -380,7 +380,7 @@ struct MIC_U::Impl {
         // client happens to be connected -- BottomScreenStream() is
         // non-null for the whole session once the feature is turned on,
         // see core/core.cpp's System::Init()), the mic is forced to the
-        // Finlink input backend, ignoring Settings::values.input_type
+        // Unison input backend, ignoring Settings::values.input_type
         // entirely: a locally-selected input device would silently never
         // be heard by a connected client, since nothing else forwards it
         // there, so leaving the local device "selected" but effectively
@@ -389,7 +389,7 @@ struct MIC_U::Impl {
         // input override under the same condition, and
         // configure_audio.cpp's UI, which grays out the input combo boxes
         // under the same condition).
-        const auto input_type = system.BottomScreenStream() ? AudioCore::InputType::Finlink
+        const auto input_type = system.BottomScreenStream() ? AudioCore::InputType::Unison
                                                               : Settings::values.input_type.GetValue();
         mic = AudioCore::GetInputDetails(input_type).create_input(
             system, Settings::values.input_device.GetValue());

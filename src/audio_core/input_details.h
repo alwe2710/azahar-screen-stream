@@ -27,12 +27,12 @@ enum class InputType : u32 {
 #ifdef HAVE_LIBRETRO
     LibRetro = 5,
 #endif
-    // Sources the mic from a connected finlink client's own microphone
-    // (src/core/streaming/bottom_screen_stream.h) -- see finlink_input.h.
+    // Sources the mic from a connected Unison client's own microphone
+    // (src/core/streaming/bottom_screen_stream.h) -- see unison_input.h.
     // Deliberately last in input_details.cpp's priority order regardless of
     // this numeric value, so InputType::Auto's existing behavior for users
-    // who've never touched finlink is completely unaffected.
-    Finlink = 6,
+    // who've never touched Unison is completely unaffected.
+    Unison = 6,
 };
 
 struct InputDetails {

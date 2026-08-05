@@ -8,7 +8,7 @@
 ![Flathub Downloads](https://img.shields.io/flathub/downloads/org.azahar_emu.Azahar?logo=flathub&label=Flathub%20Downloads)
 ![CI Build Status](https://github.com/azahar-emu/azahar/actions/workflows/build.yml/badge.svg)
 [![CI Build Status (this fork)](https://github.com/alwe2710/azahar-screen-stream/actions/workflows/build.yml/badge.svg)](https://github.com/alwe2710/azahar-screen-stream/actions/workflows/build.yml)
-[![finlink smoke (this fork)](https://github.com/alwe2710/azahar-screen-stream/actions/workflows/finlink-smoke.yml/badge.svg)](https://github.com/alwe2710/azahar-screen-stream/actions/workflows/finlink-smoke.yml)
+[![Unison smoke (this fork)](https://github.com/alwe2710/azahar-screen-stream/actions/workflows/unison-smoke.yml/badge.svg)](https://github.com/alwe2710/azahar-screen-stream/actions/workflows/unison-smoke.yml)
 
 <b>Azahar</b> is an open-source 3DS emulator project based on Citra.
 

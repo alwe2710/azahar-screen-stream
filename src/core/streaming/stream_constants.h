@@ -9,7 +9,7 @@
 
 namespace Core::Streaming {
 
-// Wire protocol version implemented here, per the finlink repo's
+// Wire protocol version implemented here, per the Unison repo's
 // docs/protocol.md -- exact-match only, no major/minor scheme. Mirrors
 // GBA_STREAM_PROTOCOL_VERSION in the sibling dolphin-gba-stream project
 // (same document, same value, two independent hand-written implementations
@@ -20,8 +20,8 @@ constexpr char STREAM_TYPE[] = "N3DS_BOTTOM_SCREEN";
 constexpr char INPUT_ENCODING[] = "n3ds_touch_and_buttons";
 constexpr char EMULATOR_IDENTIFIER[] = "Azahar";
 
-// UDP broadcast port and beacon interval, shared across the whole finlink
-// ecosystem -- FINLINK_BEACON_PORT is a #define in finlink/core/discovery.h,
+// UDP broadcast port and beacon interval, shared across the whole Unison
+// ecosystem -- UNISON_BEACON_PORT is a #define in unison/core/discovery.h,
 // re-declared here as a typed constant rather than included directly since
 // this header is C++-only and that one is written for C callers too.
 constexpr u16 BEACON_PORT = 6805;

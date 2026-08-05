@@ -12,17 +12,17 @@ class System;
 
 namespace AudioCore {
 
-// Sources the console's microphone from a connected finlink client's own
+// Sources the console's microphone from a connected Unison client's own
 // real microphone (src/core/streaming/bottom_screen_stream.h) instead of a
 // host device -- selected in Settings exactly like Cubeb/OpenAL/Static/
 // Null, see input_details.cpp. Read() returns silence (empty) whenever no
 // client is connected or none has sent anything yet, the same as NullInput
 // would -- there's no error state here, just "nothing available right
 // now".
-class FinlinkInput final : public Input {
+class UnisonInput final : public Input {
 public:
-    explicit FinlinkInput(Core::System& system);
-    ~FinlinkInput() override;
+    explicit UnisonInput(Core::System& system);
+    ~UnisonInput() override;
 
     void StartSampling(const InputParameters& params) override;
     void StopSampling() override;
