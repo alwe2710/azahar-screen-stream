@@ -253,8 +253,7 @@ void ConfigureLayout::ApplyConfiguration() {
     Settings::values.bg_blue = static_cast<float>(bg_color.blueF());
 
     Settings::values.enable_bottom_screen_streaming = unison_checkbox->isChecked();
-    Settings::values.bottom_screen_streaming_port =
-        static_cast<u16>(unison_port_spinbox->value());
+    Settings::values.bottom_screen_streaming_port = static_cast<u16>(unison_port_spinbox->value());
 }
 
 void ConfigureLayout::SetupPerGameUI() {

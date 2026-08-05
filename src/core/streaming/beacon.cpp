@@ -26,7 +26,8 @@ std::string ProbeLocalHost() {
     try {
         boost::asio::io_context io_context;
         boost::asio::ip::udp::socket probe(io_context, boost::asio::ip::udp::v4());
-        probe.connect(boost::asio::ip::udp::endpoint(boost::asio::ip::make_address_v4("8.8.8.8"), 80));
+        probe.connect(
+            boost::asio::ip::udp::endpoint(boost::asio::ip::make_address_v4("8.8.8.8"), 80));
         return probe.local_endpoint().address().to_string();
     } catch (const boost::system::system_error&) {
         return std::string();
@@ -70,8 +71,8 @@ void Beacon::Run() {
     boost::asio::ip::udp::socket socket(io_context, boost::asio::ip::udp::v4());
     boost::system::error_code ec;
     socket.set_option(boost::asio::socket_base::broadcast(true), ec);
-    const boost::asio::ip::udp::endpoint broadcast_endpoint(boost::asio::ip::address_v4::broadcast(),
-                                                             BEACON_PORT);
+    const boost::asio::ip::udp::endpoint broadcast_endpoint(
+        boost::asio::ip::address_v4::broadcast(), BEACON_PORT);
 
     while (!stop) {
         const std::string message = BuildMessage();
@@ -83,8 +84,8 @@ void Beacon::Run() {
         // Polls `stop` every 100ms instead of sleeping the full interval in
         // one call, so the destructor doesn't have to wait out an
         // in-progress interval.
-        for (auto waited = std::chrono::milliseconds::zero();
-             waited < BEACON_INTERVAL && !stop; waited += std::chrono::milliseconds(100)) {
+        for (auto waited = std::chrono::milliseconds::zero(); waited < BEACON_INTERVAL && !stop;
+             waited += std::chrono::milliseconds(100)) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     }

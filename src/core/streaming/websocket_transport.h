@@ -49,7 +49,7 @@ struct HttpRequest {
 // timeout-free-but-endless-wait guard (16 KiB cap), a malformed request, or
 // if `stop_flag` is set while waiting.
 inline std::optional<HttpRequest> ReadHttpRequest(boost::asio::ip::tcp::socket& socket,
-                                                   const std::atomic_bool& stop_flag) {
+                                                  const std::atomic_bool& stop_flag) {
     std::string request;
     std::array<char, 4096> buf{};
     while (request.find("\r\n\r\n") == std::string::npos && request.size() < 16384) {
@@ -75,8 +75,8 @@ inline std::optional<HttpRequest> ReadHttpRequest(boost::asio::ip::tcp::socket& 
     {
         const auto first_space = request_line.find(' ');
         const auto second_space = first_space == std::string::npos
-                                       ? std::string::npos
-                                       : request_line.find(' ', first_space + 1);
+                                      ? std::string::npos
+                                      : request_line.find(' ', first_space + 1);
         if (first_space != std::string::npos && second_space != std::string::npos)
             result.path = request_line.substr(first_space + 1, second_space - first_space - 1);
     }
@@ -92,7 +92,7 @@ inline std::optional<HttpRequest> ReadHttpRequest(boost::asio::ip::tcp::socket& 
         while (!value.empty() && (value.back() == '\r' || value.back() == '\n'))
             value.pop_back();
         std::transform(key.begin(), key.end(), key.begin(),
-                        [](unsigned char c) { return std::tolower(c); });
+                       [](unsigned char c) { return std::tolower(c); });
         result.headers[key] = value;
     }
     return result;
@@ -125,7 +125,7 @@ inline bool IsWebSocketUpgradeRequest(const HttpRequest& request) {
 // Switch this literal to the constant once externals/unison is updated
 // past that point.
 inline bool SendAllBytes(boost::asio::ip::tcp::socket& socket, const void* data, size_t size,
-                          const std::atomic_bool& stop_flag) {
+                         const std::atomic_bool& stop_flag) {
     const auto* bytes = static_cast<const u8*>(data);
     size_t sent_total = 0;
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
@@ -133,8 +133,8 @@ inline bool SendAllBytes(boost::asio::ip::tcp::socket& socket, const void* data,
         if (stop_flag || std::chrono::steady_clock::now() > deadline)
             return false;
         boost::system::error_code ec;
-        const size_t sent = socket.write_some(
-            boost::asio::buffer(bytes + sent_total, size - sent_total), ec);
+        const size_t sent =
+            socket.write_some(boost::asio::buffer(bytes + sent_total, size - sent_total), ec);
         if (!ec) {
             sent_total += sent;
             continue;
@@ -151,20 +151,20 @@ inline bool SendAllBytes(boost::asio::ip::tcp::socket& socket, const void* data,
 // Computes and sends the 101 Switching Protocols response. `request` must
 // satisfy IsWebSocketUpgradeRequest(). Returns false if the write failed.
 inline bool SendWebSocketUpgradeResponse(boost::asio::ip::tcp::socket& socket,
-                                          const HttpRequest& request,
-                                          const std::atomic_bool& stop_flag) {
+                                         const HttpRequest& request,
+                                         const std::atomic_bool& stop_flag) {
     const std::string concatenated =
         request.headers.at("sec-websocket-key") + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
     std::array<CryptoPP::byte, CryptoPP::SHA1::DIGESTSIZE> digest{};
     CryptoPP::SHA1().CalculateDigest(digest.data(),
-                                      reinterpret_cast<const CryptoPP::byte*>(concatenated.data()),
-                                      concatenated.size());
+                                     reinterpret_cast<const CryptoPP::byte*>(concatenated.data()),
+                                     concatenated.size());
 
     std::string accept_b64;
     CryptoPP::StringSource(digest.data(), digest.size(), true,
-                            new CryptoPP::Base64Encoder(new CryptoPP::StringSink(accept_b64),
-                                                         /*insertLineBreaks=*/false));
+                           new CryptoPP::Base64Encoder(new CryptoPP::StringSink(accept_b64),
+                                                       /*insertLineBreaks=*/false));
 
     std::ostringstream response;
     response << "HTTP/1.1 101 Switching Protocols\r\n"
@@ -183,7 +183,7 @@ constexpr u8 WS_OPCODE_CLOSE = 0x8;
 // this protocol are never masked, see unison/websocket.h's own header
 // comment on what it assumes of us).
 inline bool SendWebSocketFrame(boost::asio::ip::tcp::socket& socket, u8 opcode,
-                                const std::vector<u8>& payload, const std::atomic_bool& stop_flag) {
+                               const std::vector<u8>& payload, const std::atomic_bool& stop_flag) {
     std::vector<u8> frame;
     frame.reserve(payload.size() + 10);
     frame.push_back(static_cast<u8>(0x80 | (opcode & 0x0F))); // FIN=1, given opcode.
@@ -206,15 +206,15 @@ inline bool SendWebSocketFrame(boost::asio::ip::tcp::socket& socket, u8 opcode,
 }
 
 inline bool SendWebSocketBinaryFrame(boost::asio::ip::tcp::socket& socket,
-                                      const std::vector<u8>& payload,
-                                      const std::atomic_bool& stop_flag) {
+                                     const std::vector<u8>& payload,
+                                     const std::atomic_bool& stop_flag) {
     return SendWebSocketFrame(socket, WS_OPCODE_BINARY, payload, stop_flag);
 }
 
 inline bool SendWebSocketTextFrame(boost::asio::ip::tcp::socket& socket, const std::string& payload,
-                                    const std::atomic_bool& stop_flag) {
-    return SendWebSocketFrame(socket, WS_OPCODE_TEXT, std::vector<u8>(payload.begin(), payload.end()),
-                               stop_flag);
+                                   const std::atomic_bool& stop_flag) {
+    return SendWebSocketFrame(socket, WS_OPCODE_TEXT,
+                              std::vector<u8>(payload.begin(), payload.end()), stop_flag);
 }
 
 struct ReceivedFrame {
@@ -253,8 +253,8 @@ inline std::optional<ReceivedFrame> TryParseOneFrame(std::vector<u8>& buf, bool*
 // app-level handshake (handshake_messages.h), where exactly one text frame
 // (hello_ack) is expected before any Video/Input binary frame.
 inline std::optional<ReceivedFrame> ReceiveOneWebSocketFrame(boost::asio::ip::tcp::socket& socket,
-                                                               const std::atomic_bool& stop_flag,
-                                                               std::chrono::milliseconds timeout) {
+                                                             const std::atomic_bool& stop_flag,
+                                                             std::chrono::milliseconds timeout) {
     std::vector<u8> recv_buffer;
     std::array<u8, 4096> read_buf{};
     const auto deadline = std::chrono::steady_clock::now() + timeout;

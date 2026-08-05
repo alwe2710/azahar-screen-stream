@@ -57,7 +57,7 @@ void AppendU32LE(std::vector<u8>& out, u32 value) {
 // vkCmdCopyImageToBuffer (already top-down). The wire format, like every
 // other framebuffer this protocol ever sends, is top-down either way.
 void ConvertBgra8ToRgb565(const std::vector<u8>& bgra8, u32 width, u32 height, bool flip,
-                           std::vector<u8>& out_rgb565) {
+                          std::vector<u8>& out_rgb565) {
     out_rgb565.resize(static_cast<size_t>(width) * height * 2);
     for (u32 y = 0; y < height; y++) {
         const u32 src_row = flip ? height - 1 - y : y;
@@ -67,8 +67,7 @@ void ConvertBgra8ToRgb565(const std::vector<u8>& bgra8, u32 width, u32 height, b
             const u8 b = src[x * 4 + 0];
             const u8 g = src[x * 4 + 1];
             const u8 r = src[x * 4 + 2];
-            const u16 pixel =
-                static_cast<u16>(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+            const u16 pixel = static_cast<u16>(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
             dst[x * 2 + 0] = static_cast<u8>(pixel & 0xFF);
             dst[x * 2 + 1] = static_cast<u8>((pixel >> 8) & 0xFF);
         }
@@ -76,14 +75,14 @@ void ConvertBgra8ToRgb565(const std::vector<u8>& bgra8, u32 width, u32 height, b
 }
 
 bool SendVideoFrame(boost::asio::ip::tcp::socket& socket, const std::vector<u8>& bgra8,
-                     bool invert_y, const std::atomic_bool& stop_flag) {
+                    bool invert_y, const std::atomic_bool& stop_flag) {
     std::vector<u8> rgb565;
     ConvertBgra8ToRgb565(bgra8, STREAM_WIDTH, STREAM_HEIGHT, invert_y, rgb565);
 
     std::vector<u8> compressed(unison_deflate_max_size(rgb565.size()));
     size_t compressed_size = 0;
     if (unison_deflate_raw(rgb565.data(), rgb565.size(), compressed.data(), compressed.size(),
-                             &compressed_size) != UNISON_DEFLATE_OK) {
+                           &compressed_size) != UNISON_DEFLATE_OK) {
         LOG_ERROR(Core, "Bottom screen stream: failed to compress video frame");
         return false;
     }
@@ -195,9 +194,9 @@ void Server::ServeConnection(std::shared_ptr<boost::asio::ip::tcp::socket> socke
     }
     if (ack->protocol_version != STREAM_PROTOCOL_VERSION) {
         SendWebSocketTextFrame(*socket,
-                                BuildHandshakeErrorMessage(HandshakeErrorCode::VersionMismatch,
-                                                            "Protocol version mismatch"),
-                                stop);
+                               BuildHandshakeErrorMessage(HandshakeErrorCode::VersionMismatch,
+                                                          "Protocol version mismatch"),
+                               stop);
         return;
     }
 
@@ -206,7 +205,7 @@ void Server::ServeConnection(std::shared_ptr<boost::asio::ip::tcp::socket> socke
         SendWebSocketTextFrame(
             *socket,
             BuildHandshakeErrorMessage(HandshakeErrorCode::SlotUnavailable,
-                                        "Bottom screen stream already has an active client"),
+                                       "Bottom screen stream already has an active client"),
             stop);
         return;
     }
@@ -310,17 +309,15 @@ void Server::RunSession(boost::asio::ip::tcp::socket& socket) {
                     continue;
                 if (type == UNISON_MSG_INPUT) {
                     unison_extended_input input{};
-                    if (unison_parse_extended_input_frame(parsed->payload.data(),
-                                                            parsed->payload.size(),
-                                                            &input) == UNISON_OK) {
+                    if (unison_parse_extended_input_frame(
+                            parsed->payload.data(), parsed->payload.size(), &input) == UNISON_OK) {
                         std::lock_guard lock(input_mutex);
                         latest_input = input;
                     }
                 } else if (type == UNISON_MSG_MIC_AUDIO) {
                     unison_audio_frame audio;
-                    if (unison_parse_mic_audio_frame(parsed->payload.data(),
-                                                       parsed->payload.size(),
-                                                       &audio) == UNISON_OK) {
+                    if (unison_parse_mic_audio_frame(parsed->payload.data(), parsed->payload.size(),
+                                                     &audio) == UNISON_OK) {
                         std::lock_guard lock(mic_mutex);
                         // PollMicAudio()/UnisonInput::Read() only ever see
                         // raw sample bytes, not a rate -- they trust the
@@ -341,7 +338,7 @@ void Server::RunSession(boost::asio::ip::tcp::socket& socket) {
                         if (pending_mic_audio.size() + byte_len > kMaxPendingBytes)
                             pending_mic_audio.clear();
                         pending_mic_audio.insert(pending_mic_audio.end(), audio.samples,
-                                                  audio.samples + byte_len);
+                                                 audio.samples + byte_len);
                     }
                 }
             }

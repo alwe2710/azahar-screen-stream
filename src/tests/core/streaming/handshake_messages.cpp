@@ -42,8 +42,8 @@ TEST_CASE("Streaming::BuildHelloMessage", "[core][streaming]") {
     // never had that field to begin with, unlike session_ready), so this
     // round-trip is safe even against the stale externals/unison build.
     unison_hello parsed;
-    REQUIRE(unison_parse_hello(reinterpret_cast<const uint8_t*>(hello.data()), hello.size(), &parsed) ==
-            UNISON_HANDSHAKE_OK);
+    REQUIRE(unison_parse_hello(reinterpret_cast<const uint8_t*>(hello.data()), hello.size(),
+                               &parsed) == UNISON_HANDSHAKE_OK);
     REQUIRE(parsed.protocol_version == STREAM_PROTOCOL_VERSION);
     REQUIRE(std::string(parsed.stream_type) == STREAM_TYPE);
     REQUIRE(!parsed.has_audio);
@@ -70,8 +70,8 @@ TEST_CASE("Streaming::ParseHelloAck video_mode", "[core][streaming]") {
     // (unpatched) one, so no staleness concern here.
     for (const std::string mode : {"tiles", "legacy", "h264", "h265", "vp9"}) {
         const std::string json =
-            R"({"message":"hello_ack","protocol_version":2,"requested_slot":0,"video_mode":")" + mode +
-            "\"}";
+            R"({"message":"hello_ack","protocol_version":2,"requested_slot":0,"video_mode":")" +
+            mode + "\"}";
         const auto ack = ParseHelloAck(ToBytes(json));
         REQUIRE(ack.has_value());
         REQUIRE(ack->video_mode == mode);
@@ -101,7 +101,7 @@ TEST_CASE("Streaming::BuildSessionReadyMessage always reports legacy", "[core][s
     // this struct, at unchanged offsets -- safe to round-trip.
     unison_session_ready parsed;
     REQUIRE(unison_parse_session_ready(reinterpret_cast<const uint8_t*>(ready_json.data()),
-                                         ready_json.size(), &parsed) == UNISON_HANDSHAKE_OK);
+                                       ready_json.size(), &parsed) == UNISON_HANDSHAKE_OK);
     REQUIRE(parsed.video.width == STREAM_WIDTH);
     REQUIRE(parsed.video.height == STREAM_HEIGHT);
     // No audio, no redirect for this stream type -- see
@@ -111,13 +111,12 @@ TEST_CASE("Streaming::BuildSessionReadyMessage always reports legacy", "[core][s
 }
 
 TEST_CASE("Streaming::BuildHandshakeErrorMessage", "[core][streaming]") {
-    const std::string err_json =
-        BuildHandshakeErrorMessage(HandshakeErrorCode::SlotUnavailable,
-                                    "Bottom screen stream already has an active client");
+    const std::string err_json = BuildHandshakeErrorMessage(
+        HandshakeErrorCode::SlotUnavailable, "Bottom screen stream already has an active client");
 
     unison_handshake_error parsed;
     REQUIRE(unison_parse_handshake_error(reinterpret_cast<const uint8_t*>(err_json.data()),
-                                           err_json.size(), &parsed) == UNISON_HANDSHAKE_OK);
+                                         err_json.size(), &parsed) == UNISON_HANDSHAKE_OK);
     REQUIRE(std::string(parsed.code) == "slot_unavailable");
     REQUIRE(std::string(parsed.detail) == "Bottom screen stream already has an active client");
 }

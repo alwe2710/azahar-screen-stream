@@ -6,10 +6,10 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include "audio_core/unison_input.h"
 #include "audio_core/input_details.h"
 #include "audio_core/null_input.h"
 #include "audio_core/static_input.h"
+#include "audio_core/unison_input.h"
 #ifdef HAVE_CUBEB
 #include "audio_core/cubeb_input.h"
 #endif

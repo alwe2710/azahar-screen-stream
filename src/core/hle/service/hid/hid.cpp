@@ -23,8 +23,8 @@
 #include "core/hle/service/ir/ir_rst.h"
 #include "core/hle/service/ir/ir_user.h"
 #include "core/hle/service/service.h"
-#include "core/streaming/bottom_screen_stream.h"
 #include "core/movie.h"
+#include "core/streaming/bottom_screen_stream.h"
 
 SERVICE_CONSTRUCT_IMPL(Service::HID::Module)
 SERIALIZE_EXPORT_IMPL(Service::HID::Module)

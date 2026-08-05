@@ -34,9 +34,9 @@ std::string BuildHelloMessage() {
     obj["slots"] = nlohmann::json::array(
         {nlohmann::json{{"index", 0}, {"label", "Bottom"}, {"occupied", false}}});
     obj["video"] = {{"width", STREAM_WIDTH},
-                     {"height", STREAM_HEIGHT},
-                     {"pixel_format", "rgb565"},
-                     {"fps", STREAM_FPS}};
+                    {"height", STREAM_HEIGHT},
+                    {"pixel_format", "rgb565"},
+                    {"fps", STREAM_FPS}};
     // No "audio" field: N3DS_BOTTOM_SCREEN carries no audio (docs/protocol.md,
     // "Stream-Typen").
     obj["input_encoding"] = INPUT_ENCODING;

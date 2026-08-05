@@ -389,10 +389,11 @@ struct MIC_U::Impl {
         // input override under the same condition, and
         // configure_audio.cpp's UI, which grays out the input combo boxes
         // under the same condition).
-        const auto input_type = system.BottomScreenStream() ? AudioCore::InputType::Unison
-                                                              : Settings::values.input_type.GetValue();
-        mic = AudioCore::GetInputDetails(input_type).create_input(
-            system, Settings::values.input_device.GetValue());
+        const auto input_type = system.BottomScreenStream()
+                                    ? AudioCore::InputType::Unison
+                                    : Settings::values.input_type.GetValue();
+        mic = AudioCore::GetInputDetails(input_type)
+                  .create_input(system, Settings::values.input_device.GetValue());
         if (was_sampling) {
             StartSampling();
         }
