@@ -88,8 +88,7 @@ void Beacon::Run() {
     // regardless, so this can't make things worse than before.
     if (!local_host.empty()) {
         boost::system::error_code bind_ec;
-        socket.bind(boost::asio::ip::udp::endpoint(
-                        boost::asio::ip::make_address_v4(local_host), 0),
+        socket.bind(boost::asio::ip::udp::endpoint(boost::asio::ip::make_address_v4(local_host), 0),
                     bind_ec);
         // Best-effort: if this fails (e.g. local_host somehow isn't a valid
         // local address anymore), fall through and send unbound, same as
