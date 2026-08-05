@@ -71,6 +71,31 @@ void Beacon::Run() {
     boost::asio::ip::udp::socket socket(io_context, boost::asio::ip::udp::v4());
     boost::system::error_code ec;
     socket.set_option(boost::asio::socket_base::broadcast(true), ec);
+
+    // Bind to the specific interface local_host resolved to (see
+    // ProbeLocalHost()'s own comment above) before sending. On a machine
+    // with more than one active network interface (VPN, Docker/virtual
+    // adapters, Ethernet + Wi-Fi both up -- not unusual for a dev/gaming
+    // PC), leaving the socket unbound lets the OS pick whichever interface
+    // its default route for 255.255.255.255 happens to be, which is not
+    // guaranteed to be the same interface a discovering client (e.g. a 3DS
+    // on Wi-Fi) is actually reachable on -- the broadcast can leave via a
+    // completely different interface than the LAN the client is listening
+    // on, silently going nowhere a client will ever see. Binding pins the
+    // send to the interface local_host itself already names, which is also
+    // the address embedded in the beacon message clients use to connect
+    // back -- if that address weren't reachable, nothing would work
+    // regardless, so this can't make things worse than before.
+    if (!local_host.empty()) {
+        boost::system::error_code bind_ec;
+        socket.bind(boost::asio::ip::udp::endpoint(
+                        boost::asio::ip::make_address_v4(local_host), 0),
+                    bind_ec);
+        // Best-effort: if this fails (e.g. local_host somehow isn't a valid
+        // local address anymore), fall through and send unbound, same as
+        // before this fix existed.
+    }
+
     const boost::asio::ip::udp::endpoint broadcast_endpoint(
         boost::asio::ip::address_v4::broadcast(), BEACON_PORT);
 
