@@ -85,29 +85,31 @@ TEST_CASE("Streaming::ParseHelloAck rejects malformed input", "[core][streaming]
     REQUIRE(!ParseHelloAck(ToBytes(R"({"message":"hello_ack","protocol_version":2})")).has_value());
 }
 
-TEST_CASE("Streaming::BuildSessionReadyMessage always reports legacy", "[core][streaming]") {
-    // The actual crux of this fork's fallback story: video_mode is always
-    // "legacy" in the reply, unconditionally -- this stream type genuinely
-    // can't send tiles/h264/h265, so there's no input that should ever
-    // make it claim otherwise.
-    const std::string ready_json = BuildSessionReadyMessage();
-    REQUIRE(ready_json.find("\"message\":\"session_ready\"") != std::string::npos);
-    // Plain substring check, not a round-trip -- see this file's own top
-    // comment on why unison_session_ready.video_mode isn't safe to read
-    // via the currently-vendored unison_core here.
-    REQUIRE(ready_json.find("\"video_mode\":\"legacy\"") != std::string::npos);
+TEST_CASE("Streaming::BuildSessionReadyMessage echoes the videoMode argument", "[core][streaming]") {
+    // This stream type now has a real h264/h265 SoftwareVideoEncoder (see
+    // bottom_screen_stream.cpp's SendVideoFrame) -- BuildSessionReadyMessage()
+    // just reports back whatever ServeConnection() decided to attempt, it
+    // doesn't itself decide "legacy" vs. anything else.
+    for (const std::string& mode : {std::string("legacy"), std::string("h264"), std::string("h265")}) {
+        const std::string ready_json = BuildSessionReadyMessage(mode);
+        REQUIRE(ready_json.find("\"message\":\"session_ready\"") != std::string::npos);
+        // Plain substring check, not a round-trip -- see this file's own top
+        // comment on why unison_session_ready.video_mode isn't safe to read
+        // via the currently-vendored unison_core here.
+        REQUIRE(ready_json.find("\"video_mode\":\"" + mode + "\"") != std::string::npos);
 
-    // width/height/audio/redirect all predate video_mode's addition to
-    // this struct, at unchanged offsets -- safe to round-trip.
-    unison_session_ready parsed;
-    REQUIRE(unison_parse_session_ready(reinterpret_cast<const uint8_t*>(ready_json.data()),
-                                       ready_json.size(), &parsed) == UNISON_HANDSHAKE_OK);
-    REQUIRE(parsed.video.width == STREAM_WIDTH);
-    REQUIRE(parsed.video.height == STREAM_HEIGHT);
-    // No audio, no redirect for this stream type -- see
-    // BuildSessionReadyMessage()'s own comment.
-    REQUIRE(!parsed.has_audio);
-    REQUIRE(!parsed.has_redirect);
+        // width/height/audio/redirect all predate video_mode's addition to
+        // this struct, at unchanged offsets -- safe to round-trip.
+        unison_session_ready parsed;
+        REQUIRE(unison_parse_session_ready(reinterpret_cast<const uint8_t*>(ready_json.data()),
+                                           ready_json.size(), &parsed) == UNISON_HANDSHAKE_OK);
+        REQUIRE(parsed.video.width == STREAM_WIDTH);
+        REQUIRE(parsed.video.height == STREAM_HEIGHT);
+        // No audio, no redirect for this stream type -- see
+        // BuildSessionReadyMessage()'s own comment.
+        REQUIRE(!parsed.has_audio);
+        REQUIRE(!parsed.has_redirect);
+    }
 }
 
 TEST_CASE("Streaming::BuildHandshakeErrorMessage", "[core][streaming]") {

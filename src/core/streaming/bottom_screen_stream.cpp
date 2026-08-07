@@ -14,6 +14,7 @@
 #include "core/core.h"
 #include "core/streaming/beacon.h"
 #include "core/streaming/handshake_messages.h"
+#include "core/streaming/software_video_encoder.h"
 #include "core/streaming/stream_constants.h"
 #include "core/streaming/websocket_transport.h"
 #include "video_core/gpu.h"
@@ -74,8 +75,79 @@ void ConvertBgra8ToRgb565(const std::vector<u8>& bgra8, u32 width, u32 height, b
     }
 }
 
+// RGBA8 (memory byte order R,G,B,A) counterpart to ConvertBgra8ToRgb565
+// above -- SoftwareVideoEncoder::EncodeFrame() expects that channel order
+// specifically (see its own comment), while this capture's native buffer is
+// BGRA8 (glReadPixels/vkCmdCopyImageToBuffer convention, same as the
+// RGB565 path). Same flip convention as ConvertBgra8ToRgb565.
+void ConvertBgra8ToRgba8(const std::vector<u8>& bgra8, u32 width, u32 height, bool flip,
+                         std::vector<u8>& out_rgba8) {
+    out_rgba8.resize(static_cast<size_t>(width) * height * 4);
+    for (u32 y = 0; y < height; y++) {
+        const u32 src_row = flip ? height - 1 - y : y;
+        const u8* src = bgra8.data() + static_cast<size_t>(src_row) * width * 4;
+        u8* dst = out_rgba8.data() + static_cast<size_t>(y) * width * 4;
+        for (u32 x = 0; x < width; x++) {
+            dst[x * 4 + 0] = src[x * 4 + 2]; // R
+            dst[x * 4 + 1] = src[x * 4 + 1]; // G
+            dst[x * 4 + 2] = src[x * 4 + 0]; // B
+            dst[x * 4 + 3] = src[x * 4 + 3]; // A
+        }
+    }
+}
+
+// videoEncoder is session-local (owned by RunSession's call frame, passed
+// by reference), not a Server member -- same reasoning as
+// lastSentFrameId/previousRgb565 already being RunSession-locals: encoder
+// reference-frame state must never cross sessions. Rebuilt whenever there's
+// no encoder yet (first h264/h265 frame this session) or the requested
+// codec changed; unlike Cemu's WIIU_GAMEPAD port, this stream type's
+// capture size never actually varies frame to frame, so a
+// width/height-mismatch rebuild is intentionally not checked here (no
+// analogue of Wind Waker HD's DRC-resolution-changes-with-content exists
+// for a fixed 320x240 bottom screen).
 bool SendVideoFrame(boost::asio::ip::tcp::socket& socket, const std::vector<u8>& bgra8,
-                    bool invert_y, const std::atomic_bool& stop_flag) {
+                    bool invert_y, const std::string& video_mode,
+                    std::unique_ptr<SoftwareVideoEncoder>& video_encoder,
+                    const std::atomic_bool& stop_flag) {
+    if (video_mode == "h264" || video_mode == "h265") {
+        if (!video_encoder) {
+            video_encoder = std::make_unique<SoftwareVideoEncoder>(
+                video_mode == "h264" ? VideoCodec::H264 : VideoCodec::H265, STREAM_WIDTH,
+                STREAM_HEIGHT, static_cast<uint32_t>(STREAM_FPS));
+        }
+        if (video_encoder->IsValid()) {
+            std::vector<u8> rgba8;
+            ConvertBgra8ToRgba8(bgra8, STREAM_WIDTH, STREAM_HEIGHT, invert_y, rgba8);
+
+            std::vector<u8> nals;
+            if (!video_encoder->EncodeFrame(rgba8.data(), nals))
+                return true; // Real encoder error -- skip this frame rather than kill the session.
+            if (nals.empty())
+                return true; // Encoder produced no output yet (internal buffering).
+
+            std::vector<u8> message;
+            message.reserve(10 + nals.size());
+            message.push_back(static_cast<u8>(UNISON_MSG_VIDEO));
+            // Coded (padded, macroblock/CTU-aligned) dimensions, not
+            // STREAM_WIDTH/HEIGHT directly -- see SoftwareVideoEncoder::
+            // CodedWidth()'s own comment (moot in practice here since
+            // 320x240 is already 16-aligned, but this is what the bitstream
+            // actually describes).
+            AppendU32LE(message, video_encoder->CodedWidth());
+            AppendU32LE(message, video_encoder->CodedHeight());
+            message.push_back(video_mode == "h264" ? UNISON_VIDEO_FORMAT_H264
+                                                    : UNISON_VIDEO_FORMAT_H265);
+            message.insert(message.end(), nals.begin(), nals.end());
+            return SendWebSocketBinaryFrame(socket, message, stop_flag);
+        }
+        // Real encoder-open failure -- fall through to the raw RGB565 path
+        // below rather than send nothing for the rest of the session.
+        // ServeConnection() already reported "legacy" in session_ready for
+        // this case (see its own comment), so the client isn't expecting
+        // h264/h265 frames that would never arrive.
+    }
+
     std::vector<u8> rgb565;
     ConvertBgra8ToRgb565(bgra8, STREAM_WIDTH, STREAM_HEIGHT, invert_y, rgb565);
 
@@ -210,12 +282,20 @@ void Server::ServeConnection(std::shared_ptr<boost::asio::ip::tcp::socket> socke
         return;
     }
 
-    if (!SendWebSocketTextFrame(*socket, BuildSessionReadyMessage(), stop)) {
+    // Optimistic-echo, per BuildSessionReadyMessage()'s own comment: "tiles"
+    // (never implemented here) and anything unrecognized fall back to
+    // "legacy" up front; "h264"/"h265" are reported as requested even
+    // though SendVideoFrame() might still fail to open that encoder later
+    // this session.
+    const std::string video_mode =
+        (ack->video_mode == "h264" || ack->video_mode == "h265") ? ack->video_mode : "legacy";
+
+    if (!SendWebSocketTextFrame(*socket, BuildSessionReadyMessage(video_mode), stop)) {
         active = false;
         return;
     }
 
-    RunSession(*socket);
+    RunSession(*socket, video_mode);
 
     input_active = false;
     active = false;
@@ -229,10 +309,16 @@ void Server::ServeConnection(std::shared_ptr<boost::asio::ip::tcp::socket> socke
     }
 }
 
-void Server::RunSession(boost::asio::ip::tcp::socket& socket) {
+void Server::RunSession(boost::asio::ip::tcp::socket& socket, const std::string& video_mode) {
     input_active = true;
     frame_id = 0;
     u64 last_sent_frame_id = 0;
+    // Session-local, not a Server member -- same reasoning as
+    // last_sent_frame_id above: encoder reference-frame state must never
+    // cross sessions. Left null (rather than built here) when video_mode
+    // isn't h264/h265 at all; SendVideoFrame() itself lazily constructs it
+    // on the first frame that actually needs it.
+    std::unique_ptr<SoftwareVideoEncoder> video_encoder;
     // Edge-detection state for the mic-enable signal -- RunSession-local
     // (not a member) since it only means anything for this one session,
     // same reasoning as last_sent_frame_id above. Starts at "not wanted" so
@@ -259,7 +345,7 @@ void Server::RunSession(boost::asio::ip::tcp::socket& socket) {
             }
         }
         if (!frame_copy.empty()) {
-            if (!SendVideoFrame(socket, frame_copy, frame_invert_y, stop))
+            if (!SendVideoFrame(socket, frame_copy, frame_invert_y, video_mode, video_encoder, stop))
                 return;
             last_sent_frame_id = current_id;
         }

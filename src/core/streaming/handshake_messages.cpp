@@ -73,13 +73,15 @@ std::optional<HandshakeAck> ParseHelloAck(const std::vector<u8>& payload) {
     return ack;
 }
 
-std::string BuildSessionReadyMessage() {
-    // This stream type doesn't implement real video negotiation the way
-    // GC_GBA_LINK does: the bottom screen is a fixed 320x240, small enough
-    // that no realistic client's video_limits would ever need to shrink it,
-    // so session_ready always reports the native size rather than running
-    // NegotiateVideo()'s downscale math against a HandshakeAck.video_limits
-    // this stream type doesn't even bother parsing (see ParseHelloAck()).
+std::string BuildSessionReadyMessage(const std::string& videoMode) {
+    // This stream type doesn't implement real video *size* negotiation the
+    // way GC_GBA_LINK does: the bottom screen is a fixed 320x240, small
+    // enough that no realistic client's video_limits would ever need to
+    // shrink it, so session_ready always reports the native size rather
+    // than running NegotiateVideo()'s downscale math against a
+    // HandshakeAck.video_limits this stream type doesn't even bother
+    // parsing (see ParseHelloAck()). Video *mode* (h264/h265/legacy) is a
+    // separate axis, handled below.
     nlohmann::json obj;
     obj["message"] = "session_ready";
     obj["slot"] = 0;
@@ -87,15 +89,11 @@ std::string BuildSessionReadyMessage() {
     // No "audio", no "redirect" -- audio doesn't exist for this stream type,
     // and redirect is only ever used by multi-slot stream types.
     //
-    // video_mode is always "legacy" regardless of what the client asked for
-    // in hello_ack (see HandshakeAck::video_mode's own comment) -- this
-    // stream type has no TILES/H264/H265 encoder at all, only ever sends a
-    // full raw RGB565 frame (SendVideoFrame's hardcoded format=0, see
-    // bottom_screen_stream.cpp). Reporting the honest fallback here, per
-    // Unison's docs/protocol.md "Video-mode fallback", is what lets a
-    // client that requested something else show a fallback prompt instead
-    // of silently getting legacy video with no explanation.
-    obj["video_mode"] = "legacy";
+    // videoMode: see this function's own declaration in the header for the
+    // optimistic-echo caveat (a real encoder-open failure inside
+    // SendVideoFrame() can silently fall back to legacy without a second,
+    // corrected session_ready).
+    obj["video_mode"] = videoMode;
     return obj.dump();
 }
 

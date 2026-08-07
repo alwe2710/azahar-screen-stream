@@ -496,6 +496,8 @@ add_library(citra_core STATIC EXCLUDE_FROM_ALL
     streaming/bottom_screen_stream.h
     streaming/handshake_messages.cpp
     streaming/handshake_messages.h
+    streaming/software_video_encoder.cpp
+    streaming/software_video_encoder.h
     streaming/stream_constants.h
     streaming/websocket_transport.h
     system_titles.cpp
@@ -515,8 +517,14 @@ target_link_libraries(citra_core PUBLIC citra_common PRIVATE audio_core network 
 target_link_libraries(citra_core PRIVATE Boost::boost Boost::serialization Boost::iostreams httplib)
 target_link_libraries(citra_core PUBLIC dds-ktx PRIVATE cryptopp fmt lodepng open_source_archives)
 # streaming/: N3DS_BOTTOM_SCREEN Unison server (WebSocket handshake/framing
-# via unison_core, JSON handshake messages via json-headers).
-target_link_libraries(citra_core PRIVATE unison_core json-headers)
+# via unison_core, JSON handshake messages via json-headers). x264/x265:
+# software_video_encoder.cpp's h264/h265 encode path -- system libraries via
+# pkg-config (same libraries Cemu's own sibling port links via vcpkg; no
+# vcpkg manifest exists in this project, so pkg-config against a
+# system/distro install is the equivalent here), not vendored/bundled.
+pkg_check_modules(X264 REQUIRED IMPORTED_TARGET x264)
+pkg_check_modules(X265 REQUIRED IMPORTED_TARGET x265)
+target_link_libraries(citra_core PRIVATE unison_core json-headers PkgConfig::X264 PkgConfig::X265)
 
 if (ENABLE_WEB_SERVICE)
     target_link_libraries(citra_core PRIVATE web_service)

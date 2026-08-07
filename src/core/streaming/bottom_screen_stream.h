@@ -30,6 +30,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -99,7 +100,14 @@ private:
     // inline from DoAccept()'s completion handler itself (see this file's
     // top comment).
     void ServeConnection(std::shared_ptr<boost::asio::ip::tcp::socket> socket);
-    void RunSession(boost::asio::ip::tcp::socket& socket);
+    // videoMode is whichever value ServeConnection() decided this session
+    // will actually use ("h264"/"h265"/"legacy", see its own call site) --
+    // RunSession() builds the matching SoftwareVideoEncoder once up front
+    // (session-local, like lastSentFrameId, not a Server member: encoder
+    // reference-frame state must never cross sessions) rather than
+    // threading the raw HandshakeAck::video_mode through and re-deciding
+    // per frame.
+    void RunSession(boost::asio::ip::tcp::socket& socket, const std::string& videoMode);
 
     // Arms the next screenshot capture. Safe to call from any thread --
     // RequestScreenshot() itself just sets a few fields the render thread

@@ -34,11 +34,15 @@ namespace Core::Streaming {
 // video_mode below.)
 //
 // video_mode: what the client requested (Unison's protocol.md "tiles"/
-// "legacy"/"h264"/"h265", empty if unset/unrecognized) -- this stream type
-// doesn't support anything other than a full raw frame regardless (see
-// BuildSessionReadyMessage()), so this is parsed only so the server can
-// honestly report the fallback in session_ready.video_mode rather than
-// silently ignoring the request. Never actually changes server behavior.
+// "legacy"/"h264"/"h265", empty if unset/unrecognized). "h264"/"h265" get a
+// real SoftwareVideoEncoder (see bottom_screen_stream.cpp's SendVideoFrame);
+// anything else (including "tiles", which this stream type has never
+// implemented -- always a full frame either way) falls back to a plain raw
+// RGB565 frame. Either way BuildSessionReadyMessage() reports whichever
+// mode actually ended up in use, per docs/protocol.md's "Video-mode
+// fallback", so a client that requested something unsupported can show a
+// fallback prompt instead of silently getting different video with no
+// explanation.
 struct HandshakeAck {
     int protocol_version;
     int requested_slot;
@@ -60,7 +64,18 @@ std::string BuildHelloMessage();
 // HandshakeErrorCode::MalformedRequest.
 std::optional<HandshakeAck> ParseHelloAck(const std::vector<u8>& payload);
 
-std::string BuildSessionReadyMessage();
+// videoMode is "h264"/"h265" if that's what hello_ack requested, "legacy"
+// otherwise (unset/unrecognized, or "tiles" -- never implemented here, see
+// HandshakeAck::video_mode's own comment). This is what ServeConnection()
+// decided *will* be attempted, echoed here best-effort before
+// SendVideoFrame() ever runs -- same optimistic-echo tradeoff Cemu's own
+// port of this negotiation makes for WIIU_GAMEPAD: if the real
+// SoftwareVideoEncoder construction later fails (its own IsValid() false),
+// SendVideoFrame() silently falls back to raw RGB565 for that session
+// without a second session_ready to correct the earlier claim. Accepted
+// for v1; a client can still tell a fallback happened by comparing this
+// against what it actually requested even without that correction.
+std::string BuildSessionReadyMessage(const std::string& videoMode);
 
 std::string BuildHandshakeErrorMessage(HandshakeErrorCode code, const std::string& detail);
 
