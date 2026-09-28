@@ -4313,6 +4313,21 @@ void GMainWindow::SyncMenuUISettings() {
     // trivially bypassable from here.
     ui->menu_Screen_Layout->setEnabled(!Settings::values.enable_bottom_screen_streaming.GetValue());
 
+    // Single Window Mode had no equivalent gate at all -- ToggleWindowMode()
+    // reparents render_window (removes it from ui->horizontalLayout, or adds
+    // it back), and this widget's native winId() is what the active
+    // renderer's WSI surface was created *from* (bootmanager.cpp's
+    // CreateWindowSurface(), `wsi.render_surface = ...window->winId()`).
+    // Reparenting a QWidget across a top-level-window boundary can make Qt
+    // destroy and recreate its native window handle -- the exact crash the
+    // user hit toggling this mid-stream, since core/streaming's Server holds
+    // onto system.GPU().Renderer() for that same surface (see
+    // bottom_screen_stream.h's own top comment on why it's constructed after
+    // `gpu` and destroyed before `gpu.reset()`) with nothing forcing a
+    // rebuild after a reparent-triggered handle change.
+    ui->action_Single_Window_Mode->setEnabled(
+        !Settings::values.enable_bottom_screen_streaming.GetValue());
+
     ui->action_Screen_Layout_Default->setChecked(Settings::values.layout_option.GetValue() ==
                                                  Settings::LayoutOption::Default);
     ui->action_Screen_Layout_Single_Screen->setChecked(Settings::values.layout_option.GetValue() ==
