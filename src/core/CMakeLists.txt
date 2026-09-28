@@ -1,6 +1,8 @@
 add_library(citra_core STATIC EXCLUDE_FROM_ALL
     3ds.h
     arm/arm_interface.h
+    arm/exception_handler.cpp
+    arm/exception_handler.h
     arm/dyncom/arm_dyncom.cpp
     arm/dyncom/arm_dyncom.h
     arm/dyncom/arm_dyncom_dec.cpp
@@ -489,7 +491,6 @@ add_library(citra_core STATIC EXCLUDE_FROM_ALL
     precompiled_headers.h
     savestate.cpp
     savestate.h
-    savestate_data.h
     streaming/beacon.cpp
     streaming/beacon.h
     streaming/bottom_screen_stream.cpp
@@ -566,6 +567,20 @@ if ("x86_64" IN_LIST ARCHITECTURE OR "arm64" IN_LIST ARCHITECTURE)
         arm/dynarmic/arm_tick_counts.h
     )
     target_link_libraries(citra_core PRIVATE dynarmic)
+endif()
+
+# FastInterp's dispatch loop requires GCC/Clang computed goto; MSVC builds
+# fall back to DynCom when the JIT is off.
+if (NOT MSVC)
+    target_compile_definitions(citra_core PUBLIC HAVE_FASTINTERP)
+    target_sources(citra_core PRIVATE
+        arm/fastinterp/fastinterp.cpp
+        arm/fastinterp/fastinterp.h
+        arm/fastinterp/fastinterp_cache.h
+        arm/fastinterp/fastinterp_decode.cpp
+        arm/fastinterp/fastinterp_flags.h
+        arm/fastinterp/fastinterp_types.h
+    )
 endif()
 
 if (CITRA_USE_PRECOMPILED_HEADERS)

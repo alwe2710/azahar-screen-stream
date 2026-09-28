@@ -9,6 +9,8 @@ add_library(audio_core STATIC EXCLUDE_FROM_ALL
     hle/common.h
     hle/decoder.cpp
     hle/decoder.h
+    hle/effects.cpp
+    hle/effects.h
     hle/filter.cpp
     hle/filter.h
     hle/hle.cpp
@@ -47,7 +49,12 @@ add_library(audio_core STATIC EXCLUDE_FROM_ALL
 create_target_directory_groups(audio_core)
 
 target_link_libraries(audio_core PUBLIC citra_common citra_core)
-target_link_libraries(audio_core PRIVATE faad2 SoundTouch teakra)
+target_link_libraries(audio_core PRIVATE SoundTouch teakra)
+if(USE_SYSTEM_FAAD)
+    target_link_libraries(audio_core PRIVATE faad)
+else()
+    target_link_libraries(audio_core PRIVATE faad2)
+endif()
 # unison_input.cpp includes core/streaming/bottom_screen_stream.h, which
 # includes <unison/protocol.h> -- citra_core already links unison_core
 # (src/core/CMakeLists.txt) but only PRIVATEly, so it doesn't propagate the

@@ -10,11 +10,11 @@
 [![CI Build Status (this fork)](https://github.com/alwe2710/azahar-screen-stream/actions/workflows/build.yml/badge.svg)](https://github.com/alwe2710/azahar-screen-stream/actions/workflows/build.yml)
 [![Unison smoke (this fork)](https://github.com/alwe2710/azahar-screen-stream/actions/workflows/unison-smoke.yml/badge.svg)](https://github.com/alwe2710/azahar-screen-stream/actions/workflows/unison-smoke.yml)
 
-<b>Azahar</b> is an open-source 3DS emulator project based on Citra.
+**Azahar** is a free and open-source high level Nintendo 3DS emulator for PC and mobile devices. Our goal is to give 3DS owners a place to enjoy their library of titles with improvements to the original hardware, such as higher resolutions, modern controllers or save states. The emulator also serves as a debugging hub for homebrew developers and as a research and preservation platform for the 3DS ecosystem.
 
-It was created from the merging of PabloMK7's Citra fork and the Lime3DS project, both of which emerged shortly after Citra was taken down.
+The project continues the legacy of **Citra** and is actively developed by a community of contributors.
 
-The goal of this project is to be the de-facto platform for future development.
+*Azahar is not affiliated with or endorsed by Nintendo.*
 
 # Installation
 
@@ -24,7 +24,7 @@ Azahar is available as both an installer and a zip archive.
 
 Download the latest release in your preferred format from the [Releases](https://github.com/azahar-emu/azahar/releases) page.
 
-If you are unsure of whether you want to use MSVC or MSYS2, use MSYS2.
+If you are unsure of whether you want to use MSVC or MXE, use MXE.
 
 ---
 
