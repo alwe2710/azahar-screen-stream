@@ -177,7 +177,13 @@ jobs:
       # one from scratch under Rosetta before using it.
       - name: Install x264/x265 (x86_64)
         run: |
-          softwareupdate --install-rosetta --agree-to-license
+          # || true: this runner's Rosetta is already installed, and
+          # --install-rosetta then errors out on its own package-metadata
+          # check ("Package reference ... is missing installKBytes
+          # attribute") rather than no-op'ing -- confirmed `arch -x86_64`
+          # itself still works fine regardless, so this specific failure is
+          # safe to ignore.
+          softwareupdate --install-rosetta --agree-to-license || true
           arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
           arch -x86_64 /usr/local/bin/brew install x264 x265
       - name: Build (arm64)

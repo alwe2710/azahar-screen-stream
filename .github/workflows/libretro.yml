@@ -199,7 +199,7 @@ jobs:
         # No Rosetta-backed /usr/local Homebrew preinstalled on this runner
         # image -- see build.yml's macos job for the same fix.
         run: |
-          softwareupdate --install-rosetta --agree-to-license
+          softwareupdate --install-rosetta --agree-to-license || true
           arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
           arch -x86_64 /usr/local/bin/brew install x264 x265
       - name: Build
