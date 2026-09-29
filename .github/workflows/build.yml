@@ -166,36 +166,63 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-
       - name: Install tools
-        run: brew install ccache ninja spirv-tools x264 x265
+        run: brew install ccache ninja spirv-tools x264 x265 nasm
       # x264/x265 above only installed the arm64 build (plain `brew` on
       # this runner resolves to /opt/homebrew). The x86_64 leg below links
       # against them too (unison_core's streaming/software_video_encoder.cpp,
-      # src/core/CMakeLists.txt) and needs its own x86_64 .dylib -- this
-      # runner image (macos-26) has no second, Rosetta-backed Homebrew
-      # prefix at /usr/local preinstalled (confirmed: "/usr/local/bin/brew
-      # isn't executable"), unlike older macOS runner images, so bootstrap
-      # one from scratch under Rosetta before using it.
-      - name: Install x264/x265 (x86_64)
+      # src/core/CMakeLists.txt) and needs its own x86_64 build.
+      #
+      # Tried and abandoned: bootstrapping a second, Rosetta-backed Homebrew
+      # at /usr/local (the classic universal-build pattern) -- this runner
+      # image has none preinstalled, and current Homebrew's own installer
+      # now outright refuses to run under `arch -x86_64` at all ("Homebrew
+      # on macOS is only supported on Apple Silicon processors!"), so that
+      # path is a dead end regardless of Rosetta.
+      #
+      # Cross-compiling both libs from source instead, straight to x86_64
+      # via clang -- no Rosetta/emulation involved at all, same mechanism
+      # this job already uses to cross-build azahar itself for x86_64
+      # (-DCMAKE_OSX_ARCHITECTURES). nasm (installed above, arm64 binary)
+      # cross-assembles x86_64 object code fine -- nasm's own output
+      # target is independent of the host it runs on.
+      - name: Build x264/x265 (x86_64, from source)
         run: |
-          # || true: this runner's Rosetta is already installed, and
-          # --install-rosetta then errors out on its own package-metadata
-          # check ("Package reference ... is missing installKBytes
-          # attribute") rather than no-op'ing -- confirmed `arch -x86_64`
-          # itself still works fine regardless, so this specific failure is
-          # safe to ignore.
-          softwareupdate --install-rosetta --agree-to-license || true
-          arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          arch -x86_64 /usr/local/bin/brew install x264 x265
+          X264_PREFIX="$RUNNER_TEMP/x264-x86_64"
+          git clone --depth 1 https://code.videolan.org/videolan/x264.git "$RUNNER_TEMP/x264-src"
+          cd "$RUNNER_TEMP/x264-src"
+          CC="clang -arch x86_64" ./configure \
+            --host=x86_64-apple-darwin \
+            --prefix="$X264_PREFIX" \
+            --enable-static \
+            --disable-cli \
+            --disable-opencl \
+            --extra-cflags="-arch x86_64" \
+            --extra-ldflags="-arch x86_64"
+          make -j"$(sysctl -n hw.ncpu)"
+          make install
+
+          X265_PREFIX="$RUNNER_TEMP/x265-x86_64"
+          git clone --depth 1 -b 4.3 https://github.com/videolan/x265.git "$RUNNER_TEMP/x265-src"
+          cmake -S "$RUNNER_TEMP/x265-src/source" -B "$RUNNER_TEMP/x265-build" -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DCMAKE_INSTALL_PREFIX="$X265_PREFIX" \
+            -DENABLE_SHARED=OFF \
+            -DENABLE_CLI=OFF
+          cmake --build "$RUNNER_TEMP/x265-build"
+          cmake --install "$RUNNER_TEMP/x265-build"
+
+          echo "AZAHAR_X86_64_PKG_CONFIG_PATH=$X264_PREFIX/lib/pkgconfig:$X265_PREFIX/lib/pkgconfig" >> "$GITHUB_ENV"
       - name: Build (arm64)
         run: BUILD_ARCH=arm64 ./.ci/macos.sh
       - name: Build (x86_64)
         # PKG_CONFIG_PATH isn't arch-aware on its own -- .ci/macos.sh's
         # plain pkg-config lookup would otherwise keep resolving x264/x265
-        # against the arm64 install above (/opt/homebrew, first on PATH),
-        # same mismatch as before. Pointing it at the x86_64 Homebrew
-        # prefix's own pkgconfig dir for just this step fixes that without
-        # touching .ci/macos.sh itself.
-        run: PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig" BUILD_ARCH=x86_64 ./.ci/macos.sh
+        # against the arm64 Homebrew install above (/opt/homebrew, first on
+        # PATH), same mismatch as before. Pointing it at the from-source
+        # x86_64 build's own pkgconfig dirs for just this step fixes that
+        # without touching .ci/macos.sh itself.
+        run: PKG_CONFIG_PATH="$AZAHAR_X86_64_PKG_CONFIG_PATH" BUILD_ARCH=x86_64 ./.ci/macos.sh
       - name: Create universal app
         run: ./.ci/macos-universal.sh
       - name: Prepare for packing
