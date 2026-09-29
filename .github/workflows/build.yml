@@ -202,7 +202,7 @@ jobs:
           make install
 
           X265_PREFIX="$RUNNER_TEMP/x265-x86_64"
-          git clone --depth 1 -b 4.3 https://github.com/videolan/x265.git "$RUNNER_TEMP/x265-src"
+          git clone --depth 1 https://github.com/videolan/x265.git "$RUNNER_TEMP/x265-src"
           cmake -S "$RUNNER_TEMP/x265-src/source" -B "$RUNNER_TEMP/x265-build" -GNinja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_OSX_ARCHITECTURES=x86_64 \
