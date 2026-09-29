@@ -196,7 +196,12 @@ jobs:
       # cross-step arch-switching needed.
       - name: Install x264/x265 (x86_64)
         if: ${{ matrix.target == 'x86_64' }}
-        run: arch -x86_64 /usr/local/bin/brew install x264 x265
+        # No Rosetta-backed /usr/local Homebrew preinstalled on this runner
+        # image -- see build.yml's macos job for the same fix.
+        run: |
+          softwareupdate --install-rosetta --agree-to-license
+          arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          arch -x86_64 /usr/local/bin/brew install x264 x265
       - name: Build
         env:
           PKG_CONFIG_PATH: ${{ matrix.target == 'x86_64' && '/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig' || '' }}

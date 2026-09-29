@@ -170,12 +170,16 @@ jobs:
       # x264/x265 above only installed the arm64 build (plain `brew` on
       # this runner resolves to /opt/homebrew). The x86_64 leg below links
       # against them too (unison_core's streaming/software_video_encoder.cpp,
-      # src/core/CMakeLists.txt) and needs its own x86_64 .dylib -- GitHub's
-      # macOS-arm64 runners ship a second, Rosetta-backed Homebrew prefix at
-      # /usr/local for exactly this (existing arm64/x86_64 universal-build
-      # pattern), reached via `arch -x86_64`.
+      # src/core/CMakeLists.txt) and needs its own x86_64 .dylib -- this
+      # runner image (macos-26) has no second, Rosetta-backed Homebrew
+      # prefix at /usr/local preinstalled (confirmed: "/usr/local/bin/brew
+      # isn't executable"), unlike older macOS runner images, so bootstrap
+      # one from scratch under Rosetta before using it.
       - name: Install x264/x265 (x86_64)
-        run: arch -x86_64 /usr/local/bin/brew install x264 x265
+        run: |
+          softwareupdate --install-rosetta --agree-to-license
+          arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          arch -x86_64 /usr/local/bin/brew install x264 x265
       - name: Build (arm64)
         run: BUILD_ARCH=arm64 ./.ci/macos.sh
       - name: Build (x86_64)
