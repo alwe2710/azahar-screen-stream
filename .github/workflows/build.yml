@@ -51,7 +51,13 @@ jobs:
         target: ["appimage", "gcc-nopch"]
     container:
       image: opensauce04/azahar-build-environment:latest
-      options: -u 1001
+      # No -u 1001 here (unlike this repo's other opensauce04-image jobs):
+      # this job needs apt-get install for libx264-dev/libx265-dev
+      # (unison_core's streaming encoder, src/core/CMakeLists.txt) and the
+      # image has no sudo binary, so root is the only way to get that
+      # without a bigger image change. Root can still read/write the
+      # actions/checkout'd workspace and ccache dir fine -- confirmed no
+      # permission-related step failures afterward.
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_COMPILERCHECK: content
@@ -73,8 +79,8 @@ jobs:
             ${{ github.job }}-${{ matrix.target }}-
       - name: Install streaming deps
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y libx264-dev libx265-dev
+          apt-get update -y
+          apt-get install -y libx264-dev libx265-dev
       - name: Build
         run: ./.ci/linux.sh
       - name: Move AppImage to artifacts directory
@@ -112,7 +118,9 @@ jobs:
         target: ["clang", "gcc-nopch"]
     container:
       image: opensauce04/azahar-build-environment:latest
-      options: -u 1001
+      # See linux-x86_64's own comment: no -u 1001, this job's
+      # "Install streaming deps" step needs apt-get install and the image
+      # has no sudo binary.
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_COMPILERCHECK: content
@@ -132,8 +140,8 @@ jobs:
             ${{ github.job }}-${{ matrix.target }}-
       - name: Install streaming deps
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y libx264-dev libx265-dev
+          apt-get update -y
+          apt-get install -y libx264-dev libx265-dev
       - name: Build
         run: ./.ci/linux.sh
 
@@ -159,10 +167,25 @@ jobs:
             ${{ runner.os }}-
       - name: Install tools
         run: brew install ccache ninja spirv-tools x264 x265
+      # x264/x265 above only installed the arm64 build (plain `brew` on
+      # this runner resolves to /opt/homebrew). The x86_64 leg below links
+      # against them too (unison_core's streaming/software_video_encoder.cpp,
+      # src/core/CMakeLists.txt) and needs its own x86_64 .dylib -- GitHub's
+      # macOS-arm64 runners ship a second, Rosetta-backed Homebrew prefix at
+      # /usr/local for exactly this (existing arm64/x86_64 universal-build
+      # pattern), reached via `arch -x86_64`.
+      - name: Install x264/x265 (x86_64)
+        run: arch -x86_64 /usr/local/bin/brew install x264 x265
       - name: Build (arm64)
         run: BUILD_ARCH=arm64 ./.ci/macos.sh
       - name: Build (x86_64)
-        run: BUILD_ARCH=x86_64 ./.ci/macos.sh
+        # PKG_CONFIG_PATH isn't arch-aware on its own -- .ci/macos.sh's
+        # plain pkg-config lookup would otherwise keep resolving x264/x265
+        # against the arm64 install above (/opt/homebrew, first on PATH),
+        # same mismatch as before. Pointing it at the x86_64 Homebrew
+        # prefix's own pkgconfig dir for just this step fixes that without
+        # touching .ci/macos.sh itself.
+        run: PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig" BUILD_ARCH=x86_64 ./.ci/macos.sh
       - name: Create universal app
         run: ./.ci/macos-universal.sh
       - name: Prepare for packing
@@ -237,7 +260,12 @@ jobs:
         uses: azahar-emu/msvc-dev-cmd@v1
       - name: Install extra tools (MSVC)
         if: ${{ matrix.target == 'msvc' }}
-        run: choco install ccache ninja ptime wget
+        # pkgconfiglite: this runner has no pkg-config at all (confirmed
+        # from an actual failed run: "pkg-config tool not found", not just
+        # a missing package) -- needed for src/core/CMakeLists.txt's
+        # pkg_check_modules(X264/X265 ...) to find the vcpkg-installed
+        # x264/x265 below.
+        run: choco install ccache ninja ptime wget pkgconfiglite
       - name: Install vulkan-sdk (MSVC)
         if: ${{ matrix.target == 'msvc' }}
         run: |

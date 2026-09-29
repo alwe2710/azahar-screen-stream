@@ -189,7 +189,17 @@ jobs:
           submodules: recursive
       - name: Install tools
         run: brew install spirv-tools x264 x265
+      # Same arm64-only-by-default Homebrew issue as build.yml's macos job:
+      # plain `brew` above only installs the arm64 arch. This job builds a
+      # single fixed $TARGET per matrix entry though (not both in sequence),
+      # so the x86_64 leg just needs its own install + PKG_CONFIG_PATH, no
+      # cross-step arch-switching needed.
+      - name: Install x264/x265 (x86_64)
+        if: ${{ matrix.target == 'x86_64' }}
+        run: arch -x86_64 /usr/local/bin/brew install x264 x265
       - name: Build
+        env:
+          PKG_CONFIG_PATH: ${{ matrix.target == 'x86_64' && '/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig' || '' }}
         run: |
           cmake $CORE_ARGS -DCMAKE_OSX_ARCHITECTURES=$TARGET . -B $BUILD_DIR
           cmake --build $BUILD_DIR --target citra_libretro --config Release
