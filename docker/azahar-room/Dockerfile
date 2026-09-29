@@ -4,6 +4,14 @@
 # --- Builder ----------------
 FROM opensauce04/azahar-build-environment:latest AS builder
 
+# unison_core's streaming/software_video_encoder.cpp (src/core/CMakeLists.txt)
+# needs x264/x265 dev headers, which the base image doesn't carry. USER root
+# guarantees this RUN can apt-get install regardless of the base image's own
+# default user; this stage is discarded after the final COPY below, so it
+# doesn't affect the shipped image's user.
+USER root
+RUN apt-get update && apt-get install -y libx264-dev libx265-dev
+
 RUN mkdir /var/azahar-src/
 COPY ./ /var/azahar-src/
 

@@ -71,6 +71,10 @@ jobs:
           key: ${{ github.job }}-${{ matrix.target }}-${{ github.sha }}
           restore-keys: |
             ${{ github.job }}-${{ matrix.target }}-
+      - name: Install streaming deps
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libx264-dev libx265-dev
       - name: Build
         run: ./.ci/linux.sh
       - name: Move AppImage to artifacts directory
@@ -126,6 +130,10 @@ jobs:
           key: ${{ github.job }}-${{ matrix.target }}-${{ github.sha }}
           restore-keys: |
             ${{ github.job }}-${{ matrix.target }}-
+      - name: Install streaming deps
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libx264-dev libx265-dev
       - name: Build
         run: ./.ci/linux.sh
 
@@ -150,7 +158,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-
       - name: Install tools
-        run: brew install ccache ninja spirv-tools
+        run: brew install ccache ninja spirv-tools x264 x265
       - name: Build (arm64)
         run: BUILD_ARCH=arm64 ./.ci/macos.sh
       - name: Build (x86_64)
@@ -243,6 +251,18 @@ jobs:
         shell: pwsh
       - name: Disable line ending translation
         run: git config --global core.autocrlf input
+      # unison_core's streaming/software_video_encoder.cpp needs x264/x265
+      # via pkg-config (src/core/CMakeLists.txt) -- windows-latest already
+      # ships pkgconfiglite (that's why the earlier "Package 'x264' not
+      # found" error came from pkg-config itself, not a missing tool), so
+      # installing the ports via the runner's preinstalled vcpkg and
+      # pointing PKG_CONFIG_PATH at their generated .pc files is enough,
+      # no vcpkg.json manifest needed for this one dependency.
+      - name: Install streaming deps (MSVC)
+        if: ${{ matrix.target == 'msvc' }}
+        run: |
+          vcpkg install x264:x64-windows x265:x64-windows
+          echo "PKG_CONFIG_PATH=$VCPKG_INSTALLATION_ROOT/installed/x64-windows/lib/pkgconfig" >> "$GITHUB_ENV"
       - name: Build (Native)
         if: ${{ matrix.target != 'mxe' }}
         run: ./.ci/windows.sh

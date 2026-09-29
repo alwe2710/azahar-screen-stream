@@ -91,7 +91,7 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y llvm
+          sudo apt-get install -y llvm libx264-dev libx265-dev
       - name: Build
         run: |
           cmake $CORE_ARGS $EXTRA_CORE_ARGS . -B $BUILD_DIR
@@ -188,7 +188,7 @@ jobs:
         with:
           submodules: recursive
       - name: Install tools
-        run: brew install spirv-tools
+        run: brew install spirv-tools x264 x265
       - name: Build
         run: |
           cmake $CORE_ARGS -DCMAKE_OSX_ARCHITECTURES=$TARGET . -B $BUILD_DIR
