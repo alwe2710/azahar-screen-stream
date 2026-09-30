@@ -8,6 +8,10 @@
 #include <QValidator>
 #include "core/frontend/applets/swkbd.h"
 
+namespace Core {
+class System;
+}
+
 class QDialogButtonBox;
 class QLabel;
 class QLineEdit;
@@ -47,7 +51,7 @@ class QtKeyboard final : public QObject, public Frontend::SoftwareKeyboard {
     Q_OBJECT
 
 public:
-    explicit QtKeyboard(QWidget& parent);
+    explicit QtKeyboard(QWidget& parent, Core::System& system_);
     void Execute(const Frontend::KeyboardConfig& config) override;
     void ShowError(const std::string& error) override;
 
@@ -61,6 +65,11 @@ private:
     static constexpr u8 cancel_id = 0;
 
     QWidget& parent;
+    // Used by Execute() to check for and forward to an actively streaming
+    // Unison client (Core::Streaming::Server, N3DS_BOTTOM_SCREEN) instead
+    // of showing this class's own local dialog -- see that call site's own
+    // comment.
+    Core::System& system;
 
     std::string result_text;
     int result_button;

@@ -10,6 +10,8 @@
 #include <QString>
 #include <QVBoxLayout>
 #include "citra_qt/applets/swkbd.h"
+#include "core/core.h"
+#include "core/streaming/bottom_screen_stream.h"
 
 QtKeyboardValidator::QtKeyboardValidator(QtKeyboard* keyboard_) : keyboard(keyboard_) {}
 
@@ -96,13 +98,37 @@ void QtKeyboardDialog::HandleValidationError(Frontend::ValidationError error) {
     QMessageBox::critical(this, tr("Validation error"), VALIDATION_ERROR_MESSAGES.at(error));
 }
 
-QtKeyboard::QtKeyboard(QWidget& parent_) : parent(parent_) {}
+QtKeyboard::QtKeyboard(QWidget& parent_, Core::System& system_) : parent(parent_), system(system_) {}
 
 void QtKeyboard::Execute(const Frontend::KeyboardConfig& config) {
     SoftwareKeyboard::Execute(config);
     if (this->config.button_config != Frontend::ButtonConfig::None) {
         ok_id = static_cast<u8>(this->config.button_config);
     }
+
+    // A remote client actively watching an N3DS_BOTTOM_SCREEN Unison stream
+    // has no way to see or answer the local dialog below -- it's a host-
+    // side Qt overlay the video capture never sees (same limitation
+    // Cemu's own swkbd-forwarding comment documents for the Wii U GamePad),
+    // and QMetaObject::invokeMethod's BlockingQueuedConnection below would
+    // freeze this whole HLE thread on a dialog nobody at the host is there
+    // to close. Forward the request to the client's own native text input
+    // UI instead of showing it locally at all in that case -- docs/
+    // protocol.md's UNISON_MSG_TEXT_INPUT_REQUEST/_RESPONSE, the same
+    // mechanism every other Unison client already implements generically
+    // (this client-side UI has no per-stream-type special-casing at all).
+    if (auto* stream = system.BottomScreenStream(); stream && stream->IsStreaming()) {
+        // KeyboardConfig has no distinct "pre-filled editable text" field
+        // (only hint_text, a static prompt label QtKeyboardDialog shows
+        // above an initially-empty QLineEdit) -- there's genuinely nothing
+        // to forward as the wire request's own initial/pre-filled text.
+        auto result = stream->RequestTextInputAndWait(std::string(), this->config.max_text_length);
+        result_text = result ? result->text : std::string();
+        result_button = (result && result->confirmed) ? ok_id : cancel_id;
+        Finalize(result_text, result_button);
+        return;
+    }
+
     QMetaObject::invokeMethod(this, "OpenInputDialog", Qt::BlockingQueuedConnection);
     Finalize(result_text, result_button);
 }

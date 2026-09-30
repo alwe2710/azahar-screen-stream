@@ -27,6 +27,7 @@
 // open session that might last hours.
 
 #include <atomic>
+#include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -90,6 +91,38 @@ public:
     // (matches AudioCore::Samples' own "raw bytes, host-native s16 for a
     // 16-bit input" convention, see CubebInput::Read()).
     [[nodiscard]] std::vector<u8> PollMicAudio();
+
+    // Whether a client is currently in an active (post-session_ready)
+    // streaming session -- read by QtKeyboard::Execute() (citra_qt/applets/
+    // swkbd.cpp) to decide whether to forward a text input request to the
+    // remote client via RequestTextInputAndWait() instead of showing its
+    // own local Qt dialog, which a remote-only user has no way to see or
+    // answer (see that function's own comment).
+    [[nodiscard]] bool IsStreaming() const { return input_active.load(); }
+
+    struct TextInputResult {
+        bool confirmed;
+        std::string text;
+    };
+
+    // Forwards a text input request to the currently connected client
+    // (UNISON_MSG_TEXT_INPUT_REQUEST, docs/protocol.md) and BLOCKS the
+    // calling thread until either the client replies
+    // (UNISON_MSG_TEXT_INPUT_RESPONSE, handled in RunSession()) or the
+    // session ends (client disconnects, or this Server is destroyed) --
+    // called from the HLE thread via QtKeyboard::Execute(), which the 3DS
+    // software-keyboard applet itself expects to block until real result
+    // data is ready, so this can't be a non-blocking poll the way
+    // GetInputOverride()/PollMicAudio() are (mirrors the local Qt dialog's
+    // own dialog.exec() being just as blocking). Polls IsStreaming() every
+    // 200ms rather than requiring RunSession to notify on every one of its
+    // several exit paths -- simpler and just as correct, since a few
+    // hundred ms of extra latency on a disconnect-triggered cancel is
+    // unobservable. Returns nullopt only when the session ended before a
+    // reply arrived -- callers should treat that the same as a user-
+    // initiated cancel. Never call this when !IsStreaming().
+    [[nodiscard]] std::optional<TextInputResult> RequestTextInputAndWait(const std::string& initial_text,
+                                                                          u32 max_length);
 
 private:
     // Arms the next async_accept(); re-arms itself from within the
@@ -207,6 +240,21 @@ private:
     bool mic_wanted = false;
     u32 mic_wanted_sample_rate = 0;
     std::vector<u8> pending_mic_audio; // raw s16le bytes, mono, FIFO
+
+    // Guards the whole text-input request/response exchange --
+    // RequestTextInputAndWait() (HLE thread) blocks on text_input_cv until
+    // RunSession() (network thread) either stores a real response or
+    // input_active goes false (session ended). text_input_awaiting_response
+    // distinguishes "no reply yet" from "already answered" so a stale
+    // response left over from an earlier prompt can never be misread as
+    // answering a new one.
+    std::mutex text_input_mutex;
+    std::condition_variable text_input_cv;
+    bool text_input_request_pending = false;
+    std::string text_input_request_initial_text;
+    u32 text_input_request_max_length = 0;
+    bool text_input_awaiting_response = false;
+    std::optional<TextInputResult> text_input_response;
 
     std::unique_ptr<Beacon> beacon;
 };

@@ -284,6 +284,28 @@ std::vector<u8> Server::PollMicAudio() {
     return std::exchange(pending_mic_audio, std::vector<u8>{});
 }
 
+std::optional<Server::TextInputResult> Server::RequestTextInputAndWait(const std::string& initial_text,
+                                                                        u32 max_length) {
+    std::unique_lock lock(text_input_mutex);
+    text_input_request_pending = true;
+    text_input_request_initial_text = initial_text;
+    text_input_request_max_length = max_length;
+    text_input_awaiting_response = true;
+    text_input_response.reset();
+    // RunSession() (network thread) either fills text_input_response and
+    // clears text_input_awaiting_response once a real reply arrives, or --
+    // if the client disconnects, or this Server itself is torn down --
+    // simply stops running at all, which input_active going false reports
+    // here without RunSession having to explicitly notify on every one of
+    // its several exit paths. 200ms poll interval: a few hundred ms of
+    // extra latency on a disconnect-triggered cancel is unobservable.
+    while (text_input_awaiting_response && input_active.load()) {
+        text_input_cv.wait_for(lock, std::chrono::milliseconds(200));
+    }
+    text_input_awaiting_response = false;
+    return text_input_response;
+}
+
 void Server::DoAccept() {
     auto socket = std::make_shared<boost::asio::ip::tcp::socket>(io_context);
     acceptor.async_accept(*socket, [this, socket](const boost::system::error_code& ec) {
@@ -466,6 +488,35 @@ void Server::RunSession(boost::asio::ip::tcp::socket& socket, bool tcp_fallback,
             }
         }
 
+        {
+            bool pending;
+            std::string initial_text;
+            u32 max_length = 0;
+            {
+                std::lock_guard lock(text_input_mutex);
+                pending = text_input_request_pending;
+                if (pending) {
+                    initial_text = text_input_request_initial_text;
+                    max_length = text_input_request_max_length;
+                    text_input_request_pending = false;
+                }
+            }
+            if (pending) {
+                unison_text_input_request req{};
+                req.max_length = max_length;
+                req.text = initial_text.data();
+                req.text_len = initial_text.size();
+                std::vector<u8> payload(unison_text_input_request_max_size(initial_text.size()));
+                const size_t payload_len =
+                    unison_build_text_input_request(&req, payload.data(), payload.size());
+                if (payload_len > 0) {
+                    payload.resize(payload_len);
+                    if (!SendWebSocketBinaryFrame(socket, payload, stop))
+                        return;
+                }
+            }
+        }
+
         boost::system::error_code ec;
         const size_t received = socket.read_some(boost::asio::buffer(read_buf), ec);
         if (ec && ec != boost::asio::error::would_block)
@@ -520,6 +571,19 @@ void Server::RunSession(boost::asio::ip::tcp::socket& socket, bool tcp_fallback,
                             pending_mic_audio.clear();
                         pending_mic_audio.insert(pending_mic_audio.end(), audio.samples,
                                                  audio.samples + byte_len);
+                    }
+                } else if (type == UNISON_MSG_TEXT_INPUT_RESPONSE) {
+                    unison_text_input_response resp{};
+                    if (unison_parse_text_input_response(parsed->payload.data(),
+                                                         parsed->payload.size(), &resp) ==
+                        UNISON_OK) {
+                        {
+                            std::lock_guard lock(text_input_mutex);
+                            text_input_response =
+                                TextInputResult{resp.confirmed != 0, std::string(resp.text, resp.text_len)};
+                            text_input_awaiting_response = false;
+                        }
+                        text_input_cv.notify_all();
                     }
                 }
             }

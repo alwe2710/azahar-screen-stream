@@ -297,6 +297,13 @@ endif()
 create_target_directory_groups(citra_qt)
 
 target_link_libraries(citra_qt PRIVATE audio_core citra_common citra_core input_common network video_core)
+# applets/swkbd.cpp includes core/streaming/bottom_screen_stream.h (to forward
+# a software-keyboard request to an actively streaming Unison client instead
+# of showing this Qt applet's own local dialog) -- that header's own
+# <unison/protocol.h> include needs unison_core's include directory, which
+# citra_core's own PRIVATE link to it (core/CMakeLists.txt) doesn't propagate
+# here.
+target_link_libraries(citra_qt PRIVATE unison_core)
 target_link_libraries(citra_qt PUBLIC Boost::boost Qt6::Widgets)
 target_link_libraries(citra_qt PRIVATE nihstro-headers Qt6::Multimedia Qt6::Concurrent)
 target_link_libraries(citra_qt PRIVATE ${PLATFORM_LIBRARIES} Threads::Threads)

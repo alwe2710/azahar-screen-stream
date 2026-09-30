@@ -4583,7 +4583,7 @@ int LaunchQtFrontend(int argc, char* argv[]) {
     Frontend::RegisterDefaultApplets(system);
 
     system.RegisterMiiSelector(std::make_shared<QtMiiSelector>(main_window));
-    system.RegisterSoftwareKeyboard(std::make_shared<QtKeyboard>(main_window));
+    system.RegisterSoftwareKeyboard(std::make_shared<QtKeyboard>(main_window, system));
 
 #ifdef __APPLE__
     // Register microphone permission check.
