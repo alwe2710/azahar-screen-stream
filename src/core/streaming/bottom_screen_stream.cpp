@@ -8,7 +8,6 @@
 #include <cstring>
 #include <utility>
 
-#include <unison/deflate.h>
 #include <unison/protocol.h>
 
 #include "common/logging/log.h"
@@ -51,36 +50,13 @@ void AppendU32LE(std::vector<u8>& out, u32 value) {
     out.push_back(static_cast<u8>((value >> 24) & 0xFF));
 }
 
-// Converts a captured BGRA8 framebuffer (memory byte order B,G,R,A per
-// pixel) into row-major u16le RGB565, optionally flipping vertically --
-// `flip` should be the invert_y the capture callback reported
-// (Server::OnScreenshotComplete): true for OpenGL's glReadPixels
-// convention (row 0 at the bottom of the image), false for Vulkan's
-// vkCmdCopyImageToBuffer (already top-down). The wire format, like every
-// other framebuffer this protocol ever sends, is top-down either way.
-void ConvertBgra8ToRgb565(const std::vector<u8>& bgra8, u32 width, u32 height, bool flip,
-                          std::vector<u8>& out_rgb565) {
-    out_rgb565.resize(static_cast<size_t>(width) * height * 2);
-    for (u32 y = 0; y < height; y++) {
-        const u32 src_row = flip ? height - 1 - y : y;
-        const u8* src = bgra8.data() + static_cast<size_t>(src_row) * width * 4;
-        u8* dst = out_rgb565.data() + static_cast<size_t>(y) * width * 2;
-        for (u32 x = 0; x < width; x++) {
-            const u8 b = src[x * 4 + 0];
-            const u8 g = src[x * 4 + 1];
-            const u8 r = src[x * 4 + 2];
-            const u16 pixel = static_cast<u16>(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
-            dst[x * 2 + 0] = static_cast<u8>(pixel & 0xFF);
-            dst[x * 2 + 1] = static_cast<u8>((pixel >> 8) & 0xFF);
-        }
-    }
-}
-
-// RGBA8 (memory byte order R,G,B,A) counterpart to ConvertBgra8ToRgb565
-// above -- SoftwareVideoEncoder::EncodeFrame() expects that channel order
-// specifically (see its own comment), while this capture's native buffer is
-// BGRA8 (glReadPixels/vkCmdCopyImageToBuffer convention, same as the
-// RGB565 path). Same flip convention as ConvertBgra8ToRgb565.
+// RGBA8 (memory byte order R,G,B,A) counterpart -- SoftwareVideoEncoder::
+// EncodeFrame() expects that channel order specifically (see its own
+// comment), while this capture's native buffer is BGRA8 (glReadPixels/
+// vkCmdCopyImageToBuffer convention). `flip` should be the invert_y the
+// capture callback reported (Server::OnScreenshotComplete): true for
+// OpenGL's glReadPixels convention (row 0 at the bottom of the image),
+// false for Vulkan's vkCmdCopyImageToBuffer (already top-down).
 void ConvertBgra8ToRgba8(const std::vector<u8>& bgra8, u32 width, u32 height, bool flip,
                          std::vector<u8>& out_rgba8) {
     out_rgba8.resize(static_cast<size_t>(width) * height * 4);
@@ -137,12 +113,24 @@ bool SendFragmented(boost::asio::ip::udp::socket& socket, const boost::asio::ip:
 // by reference), not a Server member -- same reasoning as
 // lastSentFrameId/previousRgb565 already being RunSession-locals: encoder
 // reference-frame state must never cross sessions. Rebuilt whenever there's
-// no encoder yet (first h264/h265 frame this session) or the requested
-// codec changed; unlike Cemu's WIIU_GAMEPAD port, this stream type's
-// capture size never actually varies frame to frame, so a
-// width/height-mismatch rebuild is intentionally not checked here (no
-// analogue of Wind Waker HD's DRC-resolution-changes-with-content exists
-// for a fixed 320x240 bottom screen).
+// no encoder yet (first frame this session); unlike Cemu's WIIU_GAMEPAD
+// port, this stream type's capture size never actually varies frame to
+// frame, so a width/height-mismatch rebuild is intentionally not checked
+// here (no analogue of Wind Waker HD's DRC-resolution-changes-with-content
+// exists for a fixed 320x240 bottom screen).
+//
+// video_mode is always "h264" or "h265" by the time this is called --
+// ServeConnection() normalizes anything else (an old/unaware client asking
+// for the raw TILES/legacy modes this stream type used to also support, or
+// nothing at all) to "h264" before RunSession() is ever entered. Both raw
+// paths (a full non-tiled frame, and the never-actually-implemented TILES
+// mode) were removed entirely, mirroring Cemu's own WIIU_GAMEPAD port (see
+// WiiuGamepadStream.cpp's SendVideoFrame()) -- raw/tiling stays only for
+// GC_GBA_LINK (dolphin-gba-stream), whose native low-res pixel-art content
+// actually benefits from it; every other stream type always has a real
+// codec available and no client-side picker still offers the raw modes for
+// this one either, so there is no longer a caller that could reach this
+// function with anything else.
 //
 // Sends over video_socket/video_addr (the dedicated UDP video channel,
 // protocol_version 4) instead of the WebSocket control connection this
@@ -159,66 +147,36 @@ bool SendVideoFrame(bool tcp_fallback, boost::asio::ip::tcp::socket& tcp_socket,
                     const boost::asio::ip::udp::endpoint& video_addr, uint32_t frame_id,
                     const std::vector<u8>& bgra8, bool invert_y, const std::string& video_mode,
                     std::unique_ptr<SoftwareVideoEncoder>& video_encoder) {
-    if (video_mode == "h264" || video_mode == "h265") {
-        if (!video_encoder) {
-            video_encoder = std::make_unique<SoftwareVideoEncoder>(
-                video_mode == "h264" ? VideoCodec::H264 : VideoCodec::H265, STREAM_WIDTH,
-                STREAM_HEIGHT, static_cast<uint32_t>(STREAM_FPS));
-        }
-        if (video_encoder->IsValid()) {
-            std::vector<u8> rgba8;
-            ConvertBgra8ToRgba8(bgra8, STREAM_WIDTH, STREAM_HEIGHT, invert_y, rgba8);
-
-            std::vector<u8> nals;
-            if (!video_encoder->EncodeFrame(rgba8.data(), nals))
-                return true; // Real encoder error -- skip this frame rather than kill the session.
-            if (nals.empty())
-                return true; // Encoder produced no output yet (internal buffering).
-
-            std::vector<u8> message;
-            message.reserve(10 + nals.size());
-            message.push_back(static_cast<u8>(UNISON_MSG_VIDEO));
-            // Coded (padded, macroblock/CTU-aligned) dimensions, not
-            // STREAM_WIDTH/HEIGHT directly -- see SoftwareVideoEncoder::
-            // CodedWidth()'s own comment (moot in practice here since
-            // 320x240 is already 16-aligned, but this is what the bitstream
-            // actually describes).
-            AppendU32LE(message, video_encoder->CodedWidth());
-            AppendU32LE(message, video_encoder->CodedHeight());
-            message.push_back(video_mode == "h264" ? UNISON_VIDEO_FORMAT_H264
-                                                    : UNISON_VIDEO_FORMAT_H265);
-            message.insert(message.end(), nals.begin(), nals.end());
-            return tcp_fallback
-                       ? SendWebSocketBinaryFrame(tcp_socket, message, stop)
-                       : SendFragmented(video_socket, video_addr, message, UNISON_MSG_VIDEO, frame_id);
-        }
-        // Real encoder-open failure -- fall through to the raw RGB565 path
-        // below rather than send nothing for the rest of the session.
-        // ServeConnection() already reported "legacy" in session_ready for
-        // this case (see its own comment), so the client isn't expecting
-        // h264/h265 frames that would never arrive.
+    if (!video_encoder) {
+        video_encoder = std::make_unique<SoftwareVideoEncoder>(
+            video_mode == "h264" ? VideoCodec::H264 : VideoCodec::H265, STREAM_WIDTH, STREAM_HEIGHT,
+            static_cast<uint32_t>(STREAM_FPS));
     }
 
-    std::vector<u8> rgb565;
-    ConvertBgra8ToRgb565(bgra8, STREAM_WIDTH, STREAM_HEIGHT, invert_y, rgb565);
+    if (!video_encoder->IsValid())
+        return true; // Real encoder-open failure -- skip this frame rather than kill the session.
 
-    std::vector<u8> compressed(unison_deflate_max_size(rgb565.size()));
-    size_t compressed_size = 0;
-    if (unison_deflate_raw(rgb565.data(), rgb565.size(), compressed.data(), compressed.size(),
-                           &compressed_size) != UNISON_DEFLATE_OK) {
-        LOG_ERROR(Core, "Bottom screen stream: failed to compress video frame");
-        return false;
-    }
-    compressed.resize(compressed_size);
+    std::vector<u8> rgba8;
+    ConvertBgra8ToRgba8(bgra8, STREAM_WIDTH, STREAM_HEIGHT, invert_y, rgba8);
+
+    std::vector<u8> nals;
+    if (!video_encoder->EncodeFrame(rgba8.data(), nals))
+        return true; // Real encoder error -- skip this frame rather than kill the session.
+    if (nals.empty())
+        return true; // Encoder produced no output yet (internal buffering).
 
     std::vector<u8> message;
-    message.reserve(10 + compressed.size());
+    message.reserve(10 + nals.size());
     message.push_back(static_cast<u8>(UNISON_MSG_VIDEO));
-    AppendU32LE(message, STREAM_WIDTH);
-    AppendU32LE(message, STREAM_HEIGHT);
-    message.push_back(0); // format = 0: full frame, raw (non-indexed, non-tiled) RGB565.
-    message.insert(message.end(), compressed.begin(), compressed.end());
-
+    // Coded (padded, macroblock/CTU-aligned) dimensions, not
+    // STREAM_WIDTH/HEIGHT directly -- see SoftwareVideoEncoder::
+    // CodedWidth()'s own comment (moot in practice here since
+    // 320x240 is already 16-aligned, but this is what the bitstream
+    // actually describes).
+    AppendU32LE(message, video_encoder->CodedWidth());
+    AppendU32LE(message, video_encoder->CodedHeight());
+    message.push_back(video_mode == "h264" ? UNISON_VIDEO_FORMAT_H264 : UNISON_VIDEO_FORMAT_H265);
+    message.insert(message.end(), nals.begin(), nals.end());
     return tcp_fallback ? SendWebSocketBinaryFrame(tcp_socket, message, stop)
                        : SendFragmented(video_socket, video_addr, message, UNISON_MSG_VIDEO, frame_id);
 }
@@ -372,13 +330,17 @@ void Server::ServeConnection(std::shared_ptr<boost::asio::ip::tcp::socket> socke
     // since there's no dedicated UDP destination to learn.
     const bool tcp_fallback = ack->no_udp_video;
 
-    // Optimistic-echo, per BuildSessionReadyMessage()'s own comment: "tiles"
-    // (never implemented here) and anything unrecognized fall back to
-    // "legacy" up front; "h264"/"h265" are reported as requested even
-    // though SendVideoFrame() might still fail to open that encoder later
-    // this session.
-    const std::string video_mode =
-        (ack->video_mode == "h264" || ack->video_mode == "h265") ? ack->video_mode : "legacy";
+    // No raw (TILES/legacy) fallback anymore for this stream type -- see
+    // SendVideoFrame()'s own comment on why both were removed entirely.
+    // Anything other than an explicit "h265" request gets h264, the same
+    // "always a real codec" default every client's own video-mode picker
+    // for N3DS_BOTTOM_SCREEN now enforces (their raw options simply aren't
+    // offered there any more) -- this normalizes the case of an old/
+    // unaware client that still asks for "legacy"/"tiles"/nothing at all.
+    // Optimistic-echo, per BuildSessionReadyMessage()'s own comment:
+    // reported as requested even though SendVideoFrame() might still fail
+    // to open that encoder later this session.
+    const std::string video_mode = (ack->video_mode == "h265") ? "h265" : "h264";
 
     const std::optional<u16> video_port =
         tcp_fallback ? std::nullopt : std::optional<u16>(static_cast<u16>(port + kVideoPortOffset));

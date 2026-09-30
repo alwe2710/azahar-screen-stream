@@ -83,8 +83,8 @@ std::string BuildSessionReadyMessage(const std::string& videoMode, std::optional
     // shrink it, so session_ready always reports the native size rather
     // than running NegotiateVideo()'s downscale math against a
     // HandshakeAck.video_limits this stream type doesn't even bother
-    // parsing (see ParseHelloAck()). Video *mode* (h264/h265/legacy) is a
-    // separate axis, handled below.
+    // parsing (see ParseHelloAck()). Video *mode* (h264/h265, no raw
+    // fallback any more) is a separate axis, handled below.
     nlohmann::json obj;
     obj["message"] = "session_ready";
     obj["slot"] = 0;
@@ -94,8 +94,8 @@ std::string BuildSessionReadyMessage(const std::string& videoMode, std::optional
     //
     // videoMode: see this function's own declaration in the header for the
     // optimistic-echo caveat (a real encoder-open failure inside
-    // SendVideoFrame() can silently fall back to legacy without a second,
-    // corrected session_ready).
+    // SendVideoFrame() can silently skip sending video for the rest of
+    // that session without a second, corrected session_ready).
     obj["video_mode"] = videoMode;
     // Dedicated video channel (docs/protocol.md, "Dedicated video/audio
     // channel (UDP)", protocol_version 4) -- a UDP port carrying Video for
