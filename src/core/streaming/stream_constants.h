@@ -14,7 +14,16 @@ namespace Core::Streaming {
 // GBA_STREAM_PROTOCOL_VERSION in the sibling dolphin-gba-stream project
 // (same document, same value, two independent hand-written implementations
 // of the same wire format).
-constexpr int STREAM_PROTOCOL_VERSION = 2;
+//
+// 2 -> 4: session_ready.video_port now names a dedicated UDP channel
+// carrying Video (this stream type has no outgoing Audio -- see
+// bottom_screen_stream.cpp's SendVideoFrame, only Input/Mic stay on the
+// TCP control connection), instead of Video staying multiplexed on that
+// same connection. See docs/protocol.md's "Dedicated video/audio channel
+// (UDP)". Skips the intermediate protocol_version 3 (a second, still-TCP
+// video connection) entirely -- that step was superseded before this
+// fork ever adopted it.
+constexpr int STREAM_PROTOCOL_VERSION = 4;
 
 constexpr char STREAM_TYPE[] = "N3DS_BOTTOM_SCREEN";
 constexpr char INPUT_ENCODING[] = "n3ds_touch_and_buttons";

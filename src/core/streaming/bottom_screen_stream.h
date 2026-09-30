@@ -106,8 +106,23 @@ private:
     // (session-local, like lastSentFrameId, not a Server member: encoder
     // reference-frame state must never cross sessions) rather than
     // threading the raw HandshakeAck::video_mode through and re-deciding
-    // per frame.
-    void RunSession(boost::asio::ip::tcp::socket& socket, const std::string& videoMode);
+    // per frame. videoAddr is this session's client address on the
+    // dedicated UDP video channel, learned by WaitForVideoHello() below
+    // before RunSession() is ever called.
+    void RunSession(boost::asio::ip::tcp::socket& socket, const std::string& videoMode,
+                    const boost::asio::ip::udp::endpoint& videoAddr);
+    // Waits (bounded) on video_socket for the client's UNISON_MSG_UDP_HELLO
+    // rendezvous datagram (docs/protocol.md, "Dedicated video/audio channel
+    // (UDP)") -- called from ServeConnection() right after session_ready
+    // (with video_port) goes out, so RunSession() always starts already
+    // knowing where to send Video rather than having to handle "no client
+    // address yet" itself. Returns false on timeout/error; *outAddr is
+    // only meaningful when this returns true. Same bounded non-blocking
+    // poll idiom as ReadHttpRequest() above (this file's own
+    // ServeConnection), just against video_socket instead of the TCP
+    // socket.
+    [[nodiscard]] bool WaitForVideoHello(std::chrono::milliseconds timeout,
+                                         boost::asio::ip::udp::endpoint* outAddr);
 
     // Arms the next screenshot capture. Safe to call from any thread --
     // RequestScreenshot() itself just sets a few fields the render thread
@@ -125,6 +140,15 @@ private:
 
     boost::asio::io_context io_context;
     boost::asio::ip::tcp::acceptor acceptor;
+    // Dedicated video channel (docs/protocol.md, "Dedicated video/audio
+    // channel (UDP)", protocol_version 4) -- a second, always-bound UDP
+    // socket alongside `acceptor` above, port = `port + kVideoPortOffset`.
+    // Bound in the constructor the same way the TCP acceptor is, so it's
+    // ready before any client ever connects, not allocated per-session.
+    // UDP, so no listen()/accept() -- datagrams just arrive once bound.
+    // Same offset convention as Cemu's WiiuGamepadStream::kVideoPortOffset.
+    static constexpr u16 kVideoPortOffset = 50;
+    boost::asio::ip::udp::socket video_socket;
     std::thread io_thread;
     std::atomic_bool stop{false};
 

@@ -5,6 +5,7 @@
 #include "core/streaming/bottom_screen_stream.h"
 
 #include <chrono>
+#include <cstring>
 #include <utility>
 
 #include <unison/deflate.h>
@@ -96,6 +97,42 @@ void ConvertBgra8ToRgba8(const std::vector<u8>& bgra8, u32 width, u32 height, bo
     }
 }
 
+// Splits `message` (a complete UNISON_MSG_VIDEO body, e.g. what
+// SendVideoFrame below builds) across fragment_count datagrams, each
+// prefixed with a 9-byte unison_udp_fragment_header (core/include/unison/
+// protocol.h) -- docs/protocol.md's "Dedicated video/audio channel (UDP)",
+// same framing Cemu's own SendFragmented (WiiuGamepadStream.cpp) uses.
+// Every fragment but the last is exactly UNISON_UDP_MAX_FRAGMENT_PAYLOAD
+// bytes -- a wire invariant the receiver's reassembly depends on, see that
+// macro's own comment.
+bool SendFragmented(boost::asio::ip::udp::socket& socket, const boost::asio::ip::udp::endpoint& dest,
+                    const std::vector<u8>& message, unison_msg_type type, uint32_t frame_id) {
+    const size_t fragment_count =
+        message.empty() ? 1 : (message.size() + UNISON_UDP_MAX_FRAGMENT_PAYLOAD - 1) / UNISON_UDP_MAX_FRAGMENT_PAYLOAD;
+    std::vector<u8> datagram;
+    for (size_t i = 0; i < fragment_count; i++) {
+        const size_t offset = i * UNISON_UDP_MAX_FRAGMENT_PAYLOAD;
+        const size_t chunk_len = std::min<size_t>(UNISON_UDP_MAX_FRAGMENT_PAYLOAD, message.size() - offset);
+
+        unison_udp_fragment_header header{};
+        header.msg_type = static_cast<uint8_t>(type);
+        header.frame_id = frame_id;
+        header.fragment_index = static_cast<uint16_t>(i);
+        header.fragment_count = static_cast<uint16_t>(fragment_count);
+
+        datagram.resize(UNISON_UDP_FRAGMENT_HEADER_SIZE + chunk_len);
+        unison_build_udp_fragment_header(&header, datagram.data());
+        if (chunk_len > 0)
+            std::memcpy(datagram.data() + UNISON_UDP_FRAGMENT_HEADER_SIZE, message.data() + offset, chunk_len);
+
+        boost::system::error_code ec;
+        socket.send_to(boost::asio::buffer(datagram), dest, 0, ec);
+        if (ec)
+            return false;
+    }
+    return true;
+}
+
 // videoEncoder is session-local (owned by RunSession's call frame, passed
 // by reference), not a Server member -- same reasoning as
 // lastSentFrameId/previousRgb565 already being RunSession-locals: encoder
@@ -106,10 +143,16 @@ void ConvertBgra8ToRgba8(const std::vector<u8>& bgra8, u32 width, u32 height, bo
 // width/height-mismatch rebuild is intentionally not checked here (no
 // analogue of Wind Waker HD's DRC-resolution-changes-with-content exists
 // for a fixed 320x240 bottom screen).
-bool SendVideoFrame(boost::asio::ip::tcp::socket& socket, const std::vector<u8>& bgra8,
-                    bool invert_y, const std::string& video_mode,
-                    std::unique_ptr<SoftwareVideoEncoder>& video_encoder,
-                    const std::atomic_bool& stop_flag) {
+//
+// Sends over video_socket/video_addr (the dedicated UDP video channel,
+// protocol_version 4) instead of the WebSocket control connection this
+// used before -- Input/Mic stay on that TCP connection unaffected, only
+// Video (this stream type's only outgoing stream data, see this file's own
+// top comment on the lack of outgoing Audio) moved.
+bool SendVideoFrame(boost::asio::ip::udp::socket& video_socket,
+                    const boost::asio::ip::udp::endpoint& video_addr, uint32_t frame_id,
+                    const std::vector<u8>& bgra8, bool invert_y, const std::string& video_mode,
+                    std::unique_ptr<SoftwareVideoEncoder>& video_encoder) {
     if (video_mode == "h264" || video_mode == "h265") {
         if (!video_encoder) {
             video_encoder = std::make_unique<SoftwareVideoEncoder>(
@@ -139,7 +182,7 @@ bool SendVideoFrame(boost::asio::ip::tcp::socket& socket, const std::vector<u8>&
             message.push_back(video_mode == "h264" ? UNISON_VIDEO_FORMAT_H264
                                                     : UNISON_VIDEO_FORMAT_H265);
             message.insert(message.end(), nals.begin(), nals.end());
-            return SendWebSocketBinaryFrame(socket, message, stop_flag);
+            return SendFragmented(video_socket, video_addr, message, UNISON_MSG_VIDEO, frame_id);
         }
         // Real encoder-open failure -- fall through to the raw RGB565 path
         // below rather than send nothing for the rest of the session.
@@ -168,7 +211,7 @@ bool SendVideoFrame(boost::asio::ip::tcp::socket& socket, const std::vector<u8>&
     message.push_back(0); // format = 0: full frame, raw (non-indexed, non-tiled) RGB565.
     message.insert(message.end(), compressed.begin(), compressed.end());
 
-    return SendWebSocketBinaryFrame(socket, message, stop_flag);
+    return SendFragmented(video_socket, video_addr, message, UNISON_MSG_VIDEO, frame_id);
 }
 
 } // namespace
@@ -176,8 +219,14 @@ bool SendVideoFrame(boost::asio::ip::tcp::socket& socket, const std::vector<u8>&
 Server::Server(Core::System& system_, u16 port_)
     : system(system_), port(port_),
       acceptor(io_context, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), port_)),
+      video_socket(io_context,
+                   boost::asio::ip::udp::endpoint(boost::asio::ip::udp::v4(),
+                                                   static_cast<u16>(port_ + kVideoPortOffset))),
       capture_layout(BuildCaptureLayout()) {
     capture_buffer.resize(static_cast<size_t>(STREAM_WIDTH) * STREAM_HEIGHT * 4);
+
+    boost::system::error_code ec;
+    video_socket.non_blocking(true, ec);
 
     DoAccept();
     io_thread = std::thread([this] { io_context.run(); });
@@ -290,12 +339,26 @@ void Server::ServeConnection(std::shared_ptr<boost::asio::ip::tcp::socket> socke
     const std::string video_mode =
         (ack->video_mode == "h264" || ack->video_mode == "h265") ? ack->video_mode : "legacy";
 
-    if (!SendWebSocketTextFrame(*socket, BuildSessionReadyMessage(video_mode), stop)) {
+    const u16 video_port = static_cast<u16>(port + kVideoPortOffset);
+    if (!SendWebSocketTextFrame(*socket, BuildSessionReadyMessage(video_mode, video_port), stop)) {
         active = false;
         return;
     }
 
-    RunSession(*socket, video_mode);
+    // Rendezvous (docs/protocol.md, "Dedicated video/audio channel (UDP)")
+    // -- the client is expected to send a UNISON_MSG_UDP_HELLO datagram to
+    // video_port right after receiving session_ready above; wait for it
+    // here, bounded, before ever entering RunSession(), so that function
+    // never has to handle "no client address yet" itself. A timeout here
+    // means a genuine connectivity problem, treated as a handshake failure
+    // the same as any other.
+    boost::asio::ip::udp::endpoint video_addr;
+    if (!WaitForVideoHello(std::chrono::seconds(5), &video_addr)) {
+        active = false;
+        return;
+    }
+
+    RunSession(*socket, video_mode, video_addr);
 
     input_active = false;
     active = false;
@@ -309,10 +372,16 @@ void Server::ServeConnection(std::shared_ptr<boost::asio::ip::tcp::socket> socke
     }
 }
 
-void Server::RunSession(boost::asio::ip::tcp::socket& socket, const std::string& video_mode) {
+void Server::RunSession(boost::asio::ip::tcp::socket& socket, const std::string& video_mode,
+                        const boost::asio::ip::udp::endpoint& video_addr) {
     input_active = true;
     frame_id = 0;
     u64 last_sent_frame_id = 0;
+    // Fragment header frame_id (docs/protocol.md's own, distinct concept
+    // from the frame_id member above, which just detects "is there a new
+    // captured frame to send at all") -- counts video *messages actually
+    // sent* this session, independent of the capture-dirty-check above.
+    uint32_t video_frame_id_counter = 0;
     // Session-local, not a Server member -- same reasoning as
     // last_sent_frame_id above: encoder reference-frame state must never
     // cross sessions. Left null (rather than built here) when video_mode
@@ -345,8 +414,10 @@ void Server::RunSession(boost::asio::ip::tcp::socket& socket, const std::string&
             }
         }
         if (!frame_copy.empty()) {
-            if (!SendVideoFrame(socket, frame_copy, frame_invert_y, video_mode, video_encoder, stop))
+            if (!SendVideoFrame(video_socket, video_addr, video_frame_id_counter, frame_copy,
+                               frame_invert_y, video_mode, video_encoder))
                 return;
+            video_frame_id_counter++;
             last_sent_frame_id = current_id;
         }
 
@@ -432,6 +503,37 @@ void Server::RunSession(boost::asio::ip::tcp::socket& socket, const std::string&
 
         std::this_thread::sleep_for(std::chrono::milliseconds(4));
     }
+}
+
+bool Server::WaitForVideoHello(std::chrono::milliseconds timeout,
+                               boost::asio::ip::udp::endpoint* outAddr) {
+    uint8_t buf[UNISON_UDP_FRAGMENT_HEADER_SIZE];
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (stop)
+            return false;
+        boost::asio::ip::udp::endpoint sender_addr;
+        boost::system::error_code ec;
+        const size_t received = video_socket.receive_from(boost::asio::buffer(buf), sender_addr, 0, ec);
+        if (!ec) {
+            unison_udp_fragment_header header{};
+            if (received >= UNISON_UDP_FRAGMENT_HEADER_SIZE &&
+                unison_parse_udp_fragment_header(buf, received, &header) == UNISON_OK &&
+                header.msg_type == UNISON_MSG_UDP_HELLO) {
+                *outAddr = sender_addr;
+                return true;
+            }
+            // Anything else on this port (a stray/malformed packet, or a
+            // second hello from a different sender racing this one) is
+            // simply ignored -- keep waiting for a valid one until the
+            // deadline, rather than failing the whole handshake over it.
+            continue;
+        }
+        if (ec != boost::asio::error::would_block)
+            return false; // Socket closed (destructor) or errored.
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    return false; // Timed out.
 }
 
 void Server::ArmCapture() {

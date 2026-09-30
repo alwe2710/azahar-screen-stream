@@ -75,7 +75,15 @@ std::optional<HandshakeAck> ParseHelloAck(const std::vector<u8>& payload);
 // without a second session_ready to correct the earlier claim. Accepted
 // for v1; a client can still tell a fallback happened by comparing this
 // against what it actually requested even without that correction.
-std::string BuildSessionReadyMessage(const std::string& videoMode);
+//
+// videoPort: the dedicated UDP video channel's port (docs/protocol.md,
+// "Dedicated video/audio channel (UDP)", protocol_version 4) -- always
+// set for this stream type now (every client speaking protocol_version 4
+// at all, per the exact-match rule, already expects it), unlike Cemu's
+// WIIU_GAMEPAD where it stayed optional. Still a parameter rather than a
+// fixed constant baked in here, so the caller (which owns the actual UDP
+// socket) remains the one source of truth for what port it's bound to.
+std::string BuildSessionReadyMessage(const std::string& videoMode, u16 videoPort);
 
 std::string BuildHandshakeErrorMessage(HandshakeErrorCode code, const std::string& detail);
 

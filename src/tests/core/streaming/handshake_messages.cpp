@@ -4,17 +4,10 @@
 // "Video-mode fallback" negotiation feature (unison/docs/protocol.md)
 // actually runs on.
 //
-// externals/unison (a git submodule tracking Unison's main branch) still
-// predates session_ready.video_mode entirely as of this file's own writing
-// (Unison's main is itself well behind its transcoding branch, unmerged)
-// -- unison_session_ready here has no video_mode field to read at all, so
-// that one assertion below is a plain JSON substring check instead of a
-// round-trip through unison_parse_session_ready(), which is used for
-// everything else this stream type's session_ready reply carries (a field
-// that already existed before video_mode was appended, so its layout is
-// unaffected either way). Switch it to a real round-trip once
-// externals/unison is updated past that point (same situation as
-// UnisonWebSocket.h's UNISON_WS_SEND_TIMEOUT_MS comment).
+// externals/unison is now current enough (protocol_version 4) that both
+// video_mode and video_port round-trip through unison_parse_session_ready()
+// for real, rather than the plain JSON substring check an earlier revision
+// of this comment described needing until the submodule caught up.
 
 #include <catch2/catch_test_macros.hpp>
 #include "core/streaming/handshake_messages.h"
@@ -90,16 +83,11 @@ TEST_CASE("Streaming::BuildSessionReadyMessage echoes the videoMode argument", "
     // bottom_screen_stream.cpp's SendVideoFrame) -- BuildSessionReadyMessage()
     // just reports back whatever ServeConnection() decided to attempt, it
     // doesn't itself decide "legacy" vs. anything else.
+    constexpr u16 kTestVideoPort = 6855;
     for (const std::string& mode : {std::string("legacy"), std::string("h264"), std::string("h265")}) {
-        const std::string ready_json = BuildSessionReadyMessage(mode);
+        const std::string ready_json = BuildSessionReadyMessage(mode, kTestVideoPort);
         REQUIRE(ready_json.find("\"message\":\"session_ready\"") != std::string::npos);
-        // Plain substring check, not a round-trip -- see this file's own top
-        // comment on why unison_session_ready.video_mode isn't safe to read
-        // via the currently-vendored unison_core here.
-        REQUIRE(ready_json.find("\"video_mode\":\"" + mode + "\"") != std::string::npos);
 
-        // width/height/audio/redirect all predate video_mode's addition to
-        // this struct, at unchanged offsets -- safe to round-trip.
         unison_session_ready parsed;
         REQUIRE(unison_parse_session_ready(reinterpret_cast<const uint8_t*>(ready_json.data()),
                                            ready_json.size(), &parsed) == UNISON_HANDSHAKE_OK);
@@ -109,6 +97,12 @@ TEST_CASE("Streaming::BuildSessionReadyMessage echoes the videoMode argument", "
         // BuildSessionReadyMessage()'s own comment.
         REQUIRE(!parsed.has_audio);
         REQUIRE(!parsed.has_redirect);
+        REQUIRE(std::string(parsed.video_mode) == mode);
+        // Dedicated video channel (docs/protocol.md, "Dedicated
+        // video/audio channel (UDP)", protocol_version 4) -- always
+        // offered now, see BuildSessionReadyMessage()'s own comment.
+        REQUIRE(parsed.has_video_port);
+        REQUIRE(parsed.video_port == kTestVideoPort);
     }
 }
 
