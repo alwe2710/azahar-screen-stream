@@ -19,8 +19,6 @@ const char* ErrorCodeToString(HandshakeErrorCode code) {
         return "slot_unavailable";
     case HandshakeErrorCode::MalformedRequest:
         return "malformed_request";
-    case HandshakeErrorCode::UdpVideoRequired:
-        return "udp_video_required";
     }
     return "malformed_request";
 }
@@ -78,7 +76,7 @@ std::optional<HandshakeAck> ParseHelloAck(const std::vector<u8>& payload) {
     return ack;
 }
 
-std::string BuildSessionReadyMessage(const std::string& videoMode, u16 videoPort) {
+std::string BuildSessionReadyMessage(const std::string& videoMode, std::optional<u16> videoPort) {
     // This stream type doesn't implement real video *size* negotiation the
     // way GC_GBA_LINK does: the bottom screen is a fixed 320x240, small
     // enough that no realistic client's video_limits would ever need to
@@ -104,8 +102,13 @@ std::string BuildSessionReadyMessage(const std::string& videoMode, u16 videoPort
     // this stream type (no outgoing Audio here, see SendVideoFrame's own
     // comment). Presence of this key alone is what makes a client's
     // unison_parse_session_ready() set has_video_port=1 (core/src/
-    // handshake.c) -- no separate boolean field on the wire.
-    obj["video_port"] = videoPort;
+    // handshake.c) -- no separate boolean field on the wire. Omitted
+    // entirely for a client that set hello_ack.no_udp_video (docs/
+    // protocol.md, "Opting out") -- Video then stays multiplexed on this
+    // same WebSocket connection instead (Server::RunSession's tcpFallback
+    // path).
+    if (videoPort)
+        obj["video_port"] = *videoPort;
     return obj.dump();
 }
 

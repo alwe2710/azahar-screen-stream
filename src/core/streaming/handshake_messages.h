@@ -60,11 +60,6 @@ enum class HandshakeErrorCode {
     VersionMismatch,
     SlotUnavailable,
     MalformedRequest,
-    // Client set hello_ack.no_udp_video, but this server has no TCP
-    // fallback for Video left to offer instead (removed when this stream
-    // type moved to the dedicated UDP channel, protocol_version 4) -- see
-    // Server::ServeConnection()'s own comment on this check.
-    UdpVideoRequired,
 };
 
 // Serializes the `hello` message body (the JSON text frame payload -- caller
@@ -89,13 +84,16 @@ std::optional<HandshakeAck> ParseHelloAck(const std::vector<u8>& payload);
 // against what it actually requested even without that correction.
 //
 // videoPort: the dedicated UDP video channel's port (docs/protocol.md,
-// "Dedicated video/audio channel (UDP)", protocol_version 4) -- always
-// set for this stream type now (every client speaking protocol_version 4
-// at all, per the exact-match rule, already expects it), unlike Cemu's
-// WIIU_GAMEPAD where it stayed optional. Still a parameter rather than a
-// fixed constant baked in here, so the caller (which owns the actual UDP
-// socket) remains the one source of truth for what port it's bound to.
-std::string BuildSessionReadyMessage(const std::string& videoMode, u16 videoPort);
+// "Dedicated video/audio channel (UDP)", protocol_version 4) -- nullopt
+// for a client that set hello_ack.no_udp_video (Server::ServeConnection()
+// then never bothers waiting for a UNISON_MSG_UDP_HELLO rendezvous
+// either); Video then stays multiplexed on this same WebSocket connection
+// instead, the same wire format this stream type used before
+// protocol_version 4 (docs/protocol.md, "Opting out"). Still a parameter
+// rather than a fixed constant baked in here, so the caller (which owns
+// the actual UDP socket) remains the one source of truth for what port
+// it's bound to.
+std::string BuildSessionReadyMessage(const std::string& videoMode, std::optional<u16> videoPort);
 
 std::string BuildHandshakeErrorMessage(HandshakeErrorCode code, const std::string& detail);
 

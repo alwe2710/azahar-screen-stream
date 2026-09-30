@@ -148,8 +148,14 @@ bool SendFragmented(boost::asio::ip::udp::socket& socket, const boost::asio::ip:
 // protocol_version 4) instead of the WebSocket control connection this
 // used before -- Input/Mic stay on that TCP connection unaffected, only
 // Video (this stream type's only outgoing stream data, see this file's own
-// top comment on the lack of outgoing Audio) moved.
-bool SendVideoFrame(boost::asio::ip::udp::socket& video_socket,
+// top comment on the lack of outgoing Audio) moved. tcp_fallback reverts
+// that one exception: a client that set hello_ack.no_udp_video (docs/
+// protocol.md, "Opting out") has no dedicated UDP destination at all
+// (video_socket/video_addr are unused in that case), so Video goes out as
+// an ordinary WebSocket binary frame on tcp_socket instead, same as before
+// protocol_version 4.
+bool SendVideoFrame(bool tcp_fallback, boost::asio::ip::tcp::socket& tcp_socket,
+                    const std::atomic_bool& stop, boost::asio::ip::udp::socket& video_socket,
                     const boost::asio::ip::udp::endpoint& video_addr, uint32_t frame_id,
                     const std::vector<u8>& bgra8, bool invert_y, const std::string& video_mode,
                     std::unique_ptr<SoftwareVideoEncoder>& video_encoder) {
@@ -182,7 +188,9 @@ bool SendVideoFrame(boost::asio::ip::udp::socket& video_socket,
             message.push_back(video_mode == "h264" ? UNISON_VIDEO_FORMAT_H264
                                                     : UNISON_VIDEO_FORMAT_H265);
             message.insert(message.end(), nals.begin(), nals.end());
-            return SendFragmented(video_socket, video_addr, message, UNISON_MSG_VIDEO, frame_id);
+            return tcp_fallback
+                       ? SendWebSocketBinaryFrame(tcp_socket, message, stop)
+                       : SendFragmented(video_socket, video_addr, message, UNISON_MSG_VIDEO, frame_id);
         }
         // Real encoder-open failure -- fall through to the raw RGB565 path
         // below rather than send nothing for the rest of the session.
@@ -211,7 +219,8 @@ bool SendVideoFrame(boost::asio::ip::udp::socket& video_socket,
     message.push_back(0); // format = 0: full frame, raw (non-indexed, non-tiled) RGB565.
     message.insert(message.end(), compressed.begin(), compressed.end());
 
-    return SendFragmented(video_socket, video_addr, message, UNISON_MSG_VIDEO, frame_id);
+    return tcp_fallback ? SendWebSocketBinaryFrame(tcp_socket, message, stop)
+                       : SendFragmented(video_socket, video_addr, message, UNISON_MSG_VIDEO, frame_id);
 }
 
 } // namespace
@@ -332,22 +341,14 @@ void Server::ServeConnection(std::shared_ptr<boost::asio::ip::tcp::socket> socke
     }
 
     // Opt-out from the dedicated UDP channel (docs/protocol.md, "Dedicated
-    // video/audio channel (UDP)") -- clients/web is the one real client
-    // that ever sets this (no raw socket API in a browser at all). This
-    // stream type has no TCP fallback left to offer such a client instead
-    // -- so a client that can't use UDP genuinely cannot stream
-    // N3DS_BOTTOM_SCREEN video at all right now; reject clearly rather
-    // than connect it to a session that will never show a frame.
-    if (ack->no_udp_video) {
-        SendWebSocketTextFrame(
-            *socket,
-            BuildHandshakeErrorMessage(HandshakeErrorCode::UdpVideoRequired,
-                                       "Dieser Client kann keine UDP-Verbindung aufbauen, "
-                                       "N3DS_BOTTOM_SCREEN bietet aber keinen TCP-Fallback mehr an"),
-            stop);
-        active = false;
-        return;
-    }
+    // video/audio channel (UDP)" -> "Opting out") -- clients/web is the one
+    // real client that ever sets this (no raw socket API in a browser at
+    // all). Video then stays multiplexed on this same WebSocket connection
+    // instead, the same wire format this stream type used before
+    // protocol_version 4 -- session_ready omits video_port entirely
+    // (BuildSessionReadyMessage) and WaitForVideoHello is skipped below,
+    // since there's no dedicated UDP destination to learn.
+    const bool tcp_fallback = ack->no_udp_video;
 
     // Optimistic-echo, per BuildSessionReadyMessage()'s own comment: "tiles"
     // (never implemented here) and anything unrecognized fall back to
@@ -357,26 +358,29 @@ void Server::ServeConnection(std::shared_ptr<boost::asio::ip::tcp::socket> socke
     const std::string video_mode =
         (ack->video_mode == "h264" || ack->video_mode == "h265") ? ack->video_mode : "legacy";
 
-    const u16 video_port = static_cast<u16>(port + kVideoPortOffset);
+    const std::optional<u16> video_port =
+        tcp_fallback ? std::nullopt : std::optional<u16>(static_cast<u16>(port + kVideoPortOffset));
     if (!SendWebSocketTextFrame(*socket, BuildSessionReadyMessage(video_mode, video_port), stop)) {
         active = false;
         return;
     }
 
-    // Rendezvous (docs/protocol.md, "Dedicated video/audio channel (UDP)")
-    // -- the client is expected to send a UNISON_MSG_UDP_HELLO datagram to
-    // video_port right after receiving session_ready above; wait for it
-    // here, bounded, before ever entering RunSession(), so that function
-    // never has to handle "no client address yet" itself. A timeout here
-    // means a genuine connectivity problem, treated as a handshake failure
-    // the same as any other.
     boost::asio::ip::udp::endpoint video_addr;
-    if (!WaitForVideoHello(std::chrono::seconds(5), &video_addr)) {
-        active = false;
-        return;
+    if (!tcp_fallback) {
+        // Rendezvous (docs/protocol.md, "Dedicated video/audio channel
+        // (UDP)") -- the client is expected to send a UNISON_MSG_UDP_HELLO
+        // datagram to video_port right after receiving session_ready above;
+        // wait for it here, bounded, before ever entering RunSession(), so
+        // that function never has to handle "no client address yet" itself.
+        // A timeout here means a genuine connectivity problem, treated as a
+        // handshake failure the same as any other.
+        if (!WaitForVideoHello(std::chrono::seconds(5), &video_addr)) {
+            active = false;
+            return;
+        }
     }
 
-    RunSession(*socket, video_mode, video_addr);
+    RunSession(*socket, tcp_fallback, video_mode, video_addr);
 
     input_active = false;
     active = false;
@@ -390,7 +394,8 @@ void Server::ServeConnection(std::shared_ptr<boost::asio::ip::tcp::socket> socke
     }
 }
 
-void Server::RunSession(boost::asio::ip::tcp::socket& socket, const std::string& video_mode,
+void Server::RunSession(boost::asio::ip::tcp::socket& socket, bool tcp_fallback,
+                        const std::string& video_mode,
                         const boost::asio::ip::udp::endpoint& video_addr) {
     input_active = true;
     frame_id = 0;
@@ -432,8 +437,9 @@ void Server::RunSession(boost::asio::ip::tcp::socket& socket, const std::string&
             }
         }
         if (!frame_copy.empty()) {
-            if (!SendVideoFrame(video_socket, video_addr, video_frame_id_counter, frame_copy,
-                               frame_invert_y, video_mode, video_encoder))
+            if (!SendVideoFrame(tcp_fallback, socket, stop, video_socket, video_addr,
+                               video_frame_id_counter, frame_copy, frame_invert_y, video_mode,
+                               video_encoder))
                 return;
             video_frame_id_counter++;
             last_sent_frame_id = current_id;

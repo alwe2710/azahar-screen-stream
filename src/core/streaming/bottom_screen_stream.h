@@ -108,8 +108,14 @@ private:
     // threading the raw HandshakeAck::video_mode through and re-deciding
     // per frame. videoAddr is this session's client address on the
     // dedicated UDP video channel, learned by WaitForVideoHello() below
-    // before RunSession() is ever called.
-    void RunSession(boost::asio::ip::tcp::socket& socket, const std::string& videoMode,
+    // before RunSession() is ever called -- unused (default-constructed)
+    // when tcpFallback is true. tcpFallback: this session's client set
+    // hello_ack.no_udp_video (docs/protocol.md, "Opting out") -- Video is
+    // then sent as ordinary WebSocket binary frames on `socket` itself
+    // instead of via video_socket/videoAddr, the same wire format this
+    // stream type used before protocol_version 4.
+    void RunSession(boost::asio::ip::tcp::socket& socket, bool tcpFallback,
+                    const std::string& videoMode,
                     const boost::asio::ip::udp::endpoint& videoAddr);
     // Waits (bounded) on video_socket for the client's UNISON_MSG_UDP_HELLO
     // rendezvous datagram (docs/protocol.md, "Dedicated video/audio channel
