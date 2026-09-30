@@ -331,6 +331,24 @@ void Server::ServeConnection(std::shared_ptr<boost::asio::ip::tcp::socket> socke
         return;
     }
 
+    // Opt-out from the dedicated UDP channel (docs/protocol.md, "Dedicated
+    // video/audio channel (UDP)") -- clients/web is the one real client
+    // that ever sets this (no raw socket API in a browser at all). This
+    // stream type has no TCP fallback left to offer such a client instead
+    // -- so a client that can't use UDP genuinely cannot stream
+    // N3DS_BOTTOM_SCREEN video at all right now; reject clearly rather
+    // than connect it to a session that will never show a frame.
+    if (ack->no_udp_video) {
+        SendWebSocketTextFrame(
+            *socket,
+            BuildHandshakeErrorMessage(HandshakeErrorCode::UdpVideoRequired,
+                                       "Dieser Client kann keine UDP-Verbindung aufbauen, "
+                                       "N3DS_BOTTOM_SCREEN bietet aber keinen TCP-Fallback mehr an"),
+            stop);
+        active = false;
+        return;
+    }
+
     // Optimistic-echo, per BuildSessionReadyMessage()'s own comment: "tiles"
     // (never implemented here) and anything unrecognized fall back to
     // "legacy" up front; "h264"/"h265" are reported as requested even

@@ -19,6 +19,8 @@ const char* ErrorCodeToString(HandshakeErrorCode code) {
         return "slot_unavailable";
     case HandshakeErrorCode::MalformedRequest:
         return "malformed_request";
+    case HandshakeErrorCode::UdpVideoRequired:
+        return "udp_video_required";
     }
     return "malformed_request";
 }
@@ -70,6 +72,9 @@ std::optional<HandshakeAck> ParseHelloAck(const std::vector<u8>& payload) {
     const auto video_mode_it = obj.find("video_mode");
     if (video_mode_it != obj.end() && video_mode_it->is_string())
         ack.video_mode = video_mode_it->get<std::string>();
+    const auto no_udp_video_it = obj.find("no_udp_video");
+    if (no_udp_video_it != obj.end() && no_udp_video_it->is_boolean())
+        ack.no_udp_video = no_udp_video_it->get<bool>();
     return ack;
 }
 

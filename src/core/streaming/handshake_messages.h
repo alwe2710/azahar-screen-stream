@@ -47,12 +47,24 @@ struct HandshakeAck {
     int protocol_version;
     int requested_slot;
     std::string video_mode;
+    // Opt-out from the dedicated video/audio channel (docs/protocol.md,
+    // "Dedicated video/audio channel (UDP)", protocol_version 4) -- see
+    // core/'s unison_hello_ack_request::no_udp_video for the full
+    // rationale (clients/web is the one real client that ever sets this,
+    // no raw socket API exists in a browser at all). Defaults to false
+    // (can use UDP) when the client doesn't send the field.
+    bool no_udp_video = false;
 };
 
 enum class HandshakeErrorCode {
     VersionMismatch,
     SlotUnavailable,
     MalformedRequest,
+    // Client set hello_ack.no_udp_video, but this server has no TCP
+    // fallback for Video left to offer instead (removed when this stream
+    // type moved to the dedicated UDP channel, protocol_version 4) -- see
+    // Server::ServeConnection()'s own comment on this check.
+    UdpVideoRequired,
 };
 
 // Serializes the `hello` message body (the JSON text frame payload -- caller
